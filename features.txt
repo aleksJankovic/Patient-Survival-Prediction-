@@ -1,0 +1,84 @@
+1. encounter_id -  jedinstveni identifikator povezan sa boravkom pacijenta na odeljenju
+2. patient_id - jedinstveni identifikator povezan sa pacijentom 
+3. hospital_id - jedinstveni identifikator povezan sa bolnicom
+4. age - starost pacijenta prilikom prijema na odeljenje
+5. bmi - body mass index pacijenta prilikom prijema u bolnicu
+6. elective_surgery - da li je pacijent primljen na neobaveznu hiruršku operaciju
+7. ethnicity - nacionalnost ili kulturna tradicija kojoj osoba pripada
+8. gender - pol pacijenta
+9. height - visina pacijenta na prijemu na odeljenje
+10. icu_admit_source - lokacija pacijenta pre prijema na odeljenje
+11. icu_id - jedinstveni identifikator jedinice u koju je pacijent primljen
+12. icu_stay_type - koje je stanje nakon javljanja pacijenta na odeljenje (da li primljen, prebačen ili je ponovo primljen)
+13. icu_type - klasifikacija koja ukazuje na vrstu nege koju jedinica može da pruži
+14. pre_icu_los_days - dužina boravka imeđu prijema u bolnicu i prijema na odeljenje
+15. weight - težina (body mass) pacijenta prilikom prjiema na odeljenje
+16. apache_2_diagnosis - APACHE II dijagnoza za prijem na intezivnu negu
+17. apache_3j_diagnosis - šifra poddijagnoze APACHE III-J koja najbolje opisuje razlog prijema na intezivnu negu
+18. apache_post_operative - APACHE operativni status; 1 za postoperativno; 0 za neoperativno
+19. arf_apache - da li je pacijent imao akutnu bubrežnu insuficijenciju tokom prva 24 sata boravka u odeljenju, definisano kao 24-časovno izlučivanje urina <410ml, kreatinin >=133mikromol/L i bez hroni;ne dijalize
+20. gcs_eyes_apache - komponenta otvaranja očiju prema Glasgow Coma Scale, merena tokom prva 24 sata, što rezultira najvišim APACHE III rezultatom
+21. gcs_motor_apache - motorna komponenta prema Glasgow Coma Scale, merena tokom prva 24 sata , što rezultira najvišim APACHE III rezultatom
+22. gcs_unable_apache - da li Glasgow Coma Scale nije mogla da se proceni zbog sedacije pacijenta
+23. gcs_verbal_apache - verbalna komponenta prema Glasgow Coma Scale, merena tokom prva 24 sata, što rezultira najvišim APACHE III rezultatom
+24. heart_rate_apache - broj otkucaja srca izmeren tokom prva 24 sata što rezultira najvišim APACHE III rezultatom
+25. intubated_apache - da li je pacijent intubiran u trenutku kada je vrednost parcijalni pritiska gasova u arterisjkoj krvi bio najviši
+26. map_apache - srednji arterijski pritisak izmeren tokom prva 24 sata koji rezultira najvišim APACHE III rezultatom
+27. resprate_apache - brzina disanja izmerena tokom prva 24 sata što rezultira najvišim APACHE III rezultatom
+28. temp_apache - temperatura izmerena tokom prva 24 sata što rezultira najvišim APACHE III rezultatom
+29. ventilated_apache - da li je pacijent bio invazivno ventiliran u vreme najvećeg nivoa gasa arterijske krvi koristeći algoritam za ocenjivanje oksigenacije, uključujući bilo koji način ventilacije sa pozitivnim pritiskom koji se isporučuje kroz kolo spojeno na endotrahealnu cev ili traheostomiju
+30. d1_diasbp_max - najviši dijastolni krvni pritisak pacijenta tokom prva 24 sata boravka u odeljenju, bilo invazivno ili neinvazivno meren
+31. d1_diasbp_min - najniži dijastolni krvni pritisak pacijenta tokom prva 24 sata boravka u odeljenju, bilo invazivno ili neinvazivno meren
+32. d1_diasbp_noninvasive_max - najviši dijastolni krvni pritisak pacijenta tokom prva 24 sata boravka u odeljenju, neinvazivno meren
+33. d1_diasbp_noninvasive_min - najniži dijastolni krvni pritisak pacijenta tokom prva 24 sata boravka u odeljenju, neinvazivno meren
+34. d1_heartrate_max - najveći broj otkucaja srca tokom prva 24 sata boravka na odeljenju
+35. d1_heartrate_min - najmanji broj otkucaja srca tokom prva 24 sata boravka na odeljenju
+36. d1_mbp_max - najviši srednji krvi pritisak pacijenta tokom prva 24 sata na odeljenju, bilo neinvazivno ili invazivno meren
+37. d1_mbp_min - najniži srednji krvi pritisak pacijenta tokom prva 24 sata na odeljenju, bilo neinvazivno ili invazivno meren
+38. d1_mbp_noninvasive_max - najviši srednji krvi pritisak pacijenta tokom prva 24 sata na odeljenju, neinvazivno meren
+39. d1_mbp_noninvasive_min - najniži srednji krvi pritisak pacijenta tokom prva 24 sata na odeljenju, neinvazivno meren
+40. d1_resprate_max - najveća brzina disanja izmerena tokom prva 24 sata na odeljenju 
+41. d1_resprate_min - najmanja brzina disanja izmerena tokom prva 24 sata na odeljenju 
+42. d1_spo2_max - najveća saturacija pacijenta tokom prva 24 sata boravka na odeljenju
+43. d1_spo2_min - najmanja saturacija pacijenta tokom prva 24 sata boravka na odeljenju
+44. d1_sysbp_max - najviši sistolni krvni pritisak pacijenta tokom prva 24 sata, bilo neinvazivno ili invazivno meren
+45. d1_sysbp_min - najniži sistolni krvni pritisak pacijenta tokom prva 24 sata, bilo neinvazivno ili invazivno meren
+46. d1_sysbp_noninvasive_max - najviši sistolni krvni pritisak pacijenta tokom prva 24 sata, neinvazivno meren
+47. d1_sysbp_noninvasive_min - najniži sistolni krvni pritisak pacijenta tokom prva 24 sata, neinvazivno meren
+48. d1_temp_max - najviša temperatura tela pacijenta izmerena tokom prva 24 sata, invazivno merena
+49. d1_temp_min - najniža temperatura tela pacijenta izmerena tokom prva 24 sata
+50. h1_diasbp_max - najviši dijastolni krvni pritisak pacijenta tokom prva 24 sata, bilo neinvazivno ili invazivno meren
+51. h1_diasbp_min - najniži dijastolni krvni pritisak pacijenta tokom prva 24 sata, bilo neinvazivno ili invazivno meren
+52. h1_diasbp_noninvasive_max - najviši dijastolni krvni pritisak pacijenta tokom prva 24 sata, neinvazivno meren
+53. h1_diasbp_noninvasive_min - najviši dijastolni krvni pritisak pacijenta tokom prva 24 sata, neinvazivno meren
+54. h1_heartrate_max - najveći broj otkucaja srca pacijenta tokom prvo sata boravka na odeljenju
+55. h1_heartrate_min - najmanji broj otkucaja srca pacijenta tokom prvo sata boravka na odeljenju
+56. h1_mbp_max - najviši srednji krvni pritisak pacijenta tokom prvog sata boravka na odeljenju, bilo neinvazivno ili invazivno meren
+57. h1_mbp_min - najniži srednji krvni pritisak pacijenta tokom prvog sata boravka na odeljenju, bilo neinvazivno ili invazivno meren
+58. h1_mbp_noninvasive_max - najviši srednji krvni pritisak pacijenta tokom prvog sata boravka na odeljenju, neinvazivno meren
+59. h1_mbp_noninvasive_min - najniži srednji krvni pritisak pacijenta tokom prvog sata boravka na odeljenju, neinvazivno meren
+60. h1_resprate_max - najveća brzina disanja pacijenta tokom prvog sata boravka na odeljenju
+61. h1_resprate_min - najniža brzina disanja pacijenta tokom prvog sata boravka na odeljenju
+62. h1_spo2_max - najveća saturacija kiseonikom tokom prvog sata boravka u jedinici
+63. h1_spo2_min - najmanja saturacija kiseonikom tokom prvog sata boravka u jedinici
+64. h1_sysbp_max - najviši sistolni pritisak pacijenta tokom prvog sata borvaka na odeljenju, bilo neinvazivno ili invazivno meren
+65. h1_sysbp_min - najniži sistolni pritisak pacijenta tokom prvog sata borvaka na odeljenju, bilo neinvazivno ili invazivno meren
+66. h1_sysbp_noninvasive_max - najviši sistolni pritisak pacijenta tokom prvog sata borvaka na odeljenju, neinvazivno meren
+67. h1_sysbp_noninvasive_min - najniži sistolni pritisak pacijenta tokom prvog sata borvaka na odeljenju, neinvazivno meren
+68. d1_glucose_max - najveća koncentracija glukoze kod pacijenta u serumu ili plazmu tokom prva 24 sata boravka na odeljenju
+69. d1_glucose_min - najmanja koncentracija glukoze kod pacijenta u serumu ili plazmu tokom prva 24 sata boravka na odeljenju
+70. d1_potassium_max - najveća koncentracija kalijuma kod pacijenta u serumu ili plazmu tokom prva 24 sata boravka na odeljenju
+71. d1_potassium_min - najmanja koncentracija kalijuma kod pacijenta u serumu ili plazmu tokom prva 24 sata boravka na odeljenju
+72. apache_4a_hospital_death_prob - predikcija za bolnički mortalitet APACHE IVa, koristi APACHE III skor i druge kovarijente, uključujući dijagnozu
+73. apache_4a_icu_death_prob - predikcija za mortalitet na intenzivnoj nezi APACHE IVa, koristi APACHE III skor i druge kovarijente, uključujući dijagnozu
+74. aids - da li pacijent ima konačnu dijagnozu sindroma stečene imunodeficijencije(AIDS)(ne samo HIV pozitivan)
+75. cirrhosis - bilo da pacijent ima istoriju teške upotrebe alkohola sa portonom hipertenzijom i varikozitetima, drugim uzorcima ciroze sa dokazima portne hipertenzije i varikoziteta ili cirozom dokazanom biopsijom. Ovaj komorbiditet se ne osnosi na pacijente sa funkcionalnom transplatacijom jetre 
+76. diabetes_mellitus - da li je pacijentu dijagnostikovan dijabetes, bilo juvenilni ili adultni, koji zahteva lekove
+77. hepatic_failure - da li pacjient ima cirozu i dodatne komplikacije uključujući žuticu i ascites, krvarenje u gornjem delu gastroinfestilnog trakta, hepatičnu encefalopatiju ili komu
+78. immunosuppression - da li je imuni sistem pacijenta ugrožen u preiodu od 6 meseci pre prijema na intezivnu negu iz bilo kog od sledećih razloga: terapija zračenjem, hemoterapija, upotreba necitotoksičnih imunosupresivnih lekova, visoke doze steroida (najmanje 0,3 mg/kg/dan metilprednizolona ili ekvivalent najmanje 6 meseci)
+79. leukemia - da li je pacijentu dijagnostikovana akutna ili hronična mijelogena leukemija, akutna ili hronična limfocitna leukemija ili multipli mijelom
+80. lymphoma - da li je pacijentu dijagnostikovan ne-Hodgkin limfom
+81. solid_tumor_with_metastasis - da li je pacijentu dijagnostikovan bilo koji karcinom solidnog tumora (uključujući maligni melanom) koji ima dokaze o metastazama
+82. apache_3j_bodysystem - grupa za prijmnu dijagnostiku APACHE III
+83. apache_2_bodysystem - grupa za prijmnu dijagnostiku APACHE II
+84. hospital_death - da li je pacijent preminuo tokom ove hospitalizacije

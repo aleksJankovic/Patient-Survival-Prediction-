@@ -1,0 +1,2809 @@
+---
+title: "Patient Survival Prediction"
+author: "DatAlex"
+date: "`r Sys.Date()`"
+output:
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Ishod preživljavanja pacijenta u bolnici može biti faktor slučajnosti ili možda greška bolničkog osoblja tokom tretiranja pacijenta. Naš cilj je da na osnovu podataka koji su dobijeni analizom pacijenta tokom prijema u bolnicu, i podataka anamneze pacijenta predktujemo da li će pacijent da preživi. Skup podataka koji smo koristili se nalazi u folderu *seminarski rad* i naziva se *dataset.csv*. 
+
+Za početak ćemo uraditi import dataseta:
+
+```{r}
+library(readr)
+dataset <- read_csv("dataset.csv")
+View(dataset)
+```
+
+Da bismo se pripremili za rad učitaćemo biblioteke:
+
+```{r}
+library(tidyverse)
+library(dplyr)
+library(mice)
+library(ggplot2)
+library(plotly)
+library(rio)
+library(validate)
+library(leaps) 
+library(MASS)
+library(glmnet)
+library(rpart)
+library(randomForest)
+library(caret)
+library(ROCR)
+library(pROC)
+library(irr)
+```
+
+*PREDSTAVLJANJE DATASETA*
+
+Nakon učitavanja podataka, funkcija *dim* daje informacije o dimenzijama okvira podataka. Vidi se da skup podataka sadrži 91713 redova i 85 kolona/obeležja. 
+
+```{r}
+dim(dataset)
+```
+
+Funkcijom **str** proveravamo kakva je struktura datih kolona/obeležja. Možemo videti da postoji *7* obeležja znakovnog tipa(chr) i *78* obeležja numeričkog tipa, jedno obeležje je tipa *logic*.
+
+```{r}
+str(dataset)
+```
+
+```{r}
+(colMeans(is.na(dataset)))*100
+```
+
+Prilikom ove provere gde smo prikazali kolko NA vrednosti inputi imaju procentualno.
+
+Obeležja i njihov opis koje sadrži okvir podataka *Patient Survival Prediction*
+
+1. encounter_id -  jedinstveni identifikator povezan sa boravkom pacijenta na odeljenju
+2. patient_id - jedinstveni identifikator povezan sa pacijentom 
+3. hospital_id - jedinstveni identifikator povezan sa bolnicom
+4. age - starost pacijenta prilikom prijema na odeljenje
+5. bmi - body mass index pacijenta prilikom prijema u bolnicu
+6. elective_surgery - da li je pacijent primljen na neobaveznu hiruršku operaciju
+7. ethnicity - nacionalnost ili kulturna tradicija kojoj osoba pripada
+8. gender - pol pacijenta
+9. height - visina pacijenta na prijemu na odeljenje
+10. icu_admit_source - lokacija pacijenta pre prijema na odeljenje
+11. icu_id - jedinstveni identifikator jedinice u koju je pacijent primljen
+12. icu_stay_type - koje je stanje nakon javljanja pacijenta na odeljenje (da li primljen, prebačen ili je ponovo primljen)
+13. icu_type - klasifikacija koja ukazuje na vrstu nege koju jedinica može da pruži
+14. pre_icu_los_days - dužina boravka imeđu prijema u bolnicu i prijema na odeljenje
+15. weight - težina (body mass) pacijenta prilikom prjiema na odeljenje
+16. apache_2_diagnosis - APACHE II dijagnoza za prijem na intezivnu negu
+17. apache_3j_diagnosis - šifra poddijagnoze APACHE III-J koja najbolje opisuje razlog prijema na intezivnu negu
+18. apache_post_operative - APACHE operativni status; 1 za postoperativno; 0 za neoperativno
+19. arf_apache - da li je pacijent imao akutnu bubrežnu insuficijenciju tokom prva 24 sata boravka u odeljenju, definisano kao 24-časovno izlučivanje urina <410ml, kreatinin >=133mikromol/L i bez hronične dijalize
+20. gcs_eyes_apache - komponenta otvaranja očiju prema Glasgow Coma Scale, merena tokom prva 24 sata, što rezultira najvišim APACHE III rezultatom
+21. gcs_motor_apache - motorna komponenta prema Glasgow Coma Scale, merena tokom prva 24 sata , što rezultira najvišim APACHE III rezultatom
+22. gcs_unable_apache - da li Glasgow Coma Scale nije mogla da se proceni zbog sedacije pacijenta
+23. gcs_verbal_apache - verbalna komponenta prema Glasgow Coma Scale, merena tokom prva 24 sata, što rezultira najvišim APACHE III rezultatom
+24. heart_rate_apache - broj otkucaja srca izmeren tokom prva 24 sata što rezultira najvišim APACHE III rezultatom
+25. intubated_apache - da li je pacijent intubiran u trenutku kada je vrednost parcijalni pritiska gasova u arterisjkoj krvi bio najviši
+26. map_apache - srednji arterijski pritisak izmeren tokom prva 24 sata koji rezultira najvišim APACHE III rezultatom
+27. resprate_apache - brzina disanja izmerena tokom prva 24 sata što rezultira najvišim APACHE III rezultatom
+28. temp_apache - temperatura izmerena tokom prva 24 sata što rezultira najvišim APACHE III rezultatom
+29. ventilated_apache - da li je pacijent bio invazivno ventiliran u vreme najvećeg nivoa gasa arterijske krvi koristeći algoritam za ocenjivanje oksigenacije, uključujući bilo koji način ventilacije sa pozitivnim pritiskom koji se isporučuje kroz kolo spojeno na endotrahealnu cev ili traheostomiju
+30. d1_diasbp_max - najviši dijastolni krvni pritisak pacijenta tokom prva 24 sata boravka u odeljenju, bilo invazivno ili neinvazivno meren
+31. d1_diasbp_min - najniži dijastolni krvni pritisak pacijenta tokom prva 24 sata boravka u odeljenju, bilo invazivno ili neinvazivno meren
+32. d1_diasbp_noninvasive_max - najviši dijastolni krvni pritisak pacijenta tokom prva 24 sata boravka u odeljenju, neinvazivno meren
+33. d1_diasbp_noninvasive_min - najniži dijastolni krvni pritisak pacijenta tokom prva 24 sata boravka u odeljenju, neinvazivno meren
+34. d1_heartrate_max - najveći broj otkucaja srca tokom prva 24 sata boravka na odeljenju
+35. d1_heartrate_min - najmanji broj otkucaja srca tokom prva 24 sata boravka na odeljenju
+36. d1_mbp_max - najviši srednji krvi pritisak pacijenta tokom prva 24 sata na odeljenju, bilo neinvazivno ili invazivno meren
+37. d1_mbp_min - najniži srednji krvi pritisak pacijenta tokom prva 24 sata na odeljenju, bilo neinvazivno ili invazivno meren
+38. d1_mbp_noninvasive_max - najviši srednji krvi pritisak pacijenta tokom prva 24 sata na odeljenju, neinvazivno meren
+39. d1_mbp_noninvasive_min - najniži srednji krvi pritisak pacijenta tokom prva 24 sata na odeljenju, neinvazivno meren
+40. d1_resprate_max - najveća brzina disanja izmerena tokom prva 24 sata na odeljenju 
+41. d1_resprate_min - najmanja brzina disanja izmerena tokom prva 24 sata na odeljenju 
+42. d1_spo2_max - najveća saturacija pacijenta tokom prva 24 sata boravka na odeljenju
+43. d1_spo2_min - najmanja saturacija pacijenta tokom prva 24 sata boravka na odeljenju
+44. d1_sysbp_max - najviši sistolni krvni pritisak pacijenta tokom prva 24 sata, bilo neinvazivno ili invazivno meren
+45. d1_sysbp_min - najniži sistolni krvni pritisak pacijenta tokom prva 24 sata, bilo neinvazivno ili invazivno meren
+46. d1_sysbp_noninvasive_max - najviši sistolni krvni pritisak pacijenta tokom prva 24 sata, neinvazivno meren
+47. d1_sysbp_noninvasive_min - najniži sistolni krvni pritisak pacijenta tokom prva 24 sata, neinvazivno meren
+48. d1_temp_max - najviša temperatura tela pacijenta izmerena tokom prva 24 sata, invazivno merena
+49. d1_temp_min - najniža temperatura tela pacijenta izmerena tokom prva 24 sata
+50. h1_diasbp_max - najviši dijastolni krvni pritisak pacijenta tokom prva 24 sata, bilo neinvazivno ili invazivno meren
+51. h1_diasbp_min - najniži dijastolni krvni pritisak pacijenta tokom prva 24 sata, bilo neinvazivno ili invazivno meren
+52. h1_diasbp_noninvasive_max - najviši dijastolni krvni pritisak pacijenta tokom prva 24 sata, neinvazivno meren
+53. h1_diasbp_noninvasive_min - najviši dijastolni krvni pritisak pacijenta tokom prva 24 sata, neinvazivno meren
+54. h1_heartrate_max - najveći broj otkucaja srca pacijenta tokom prvo sata boravka na odeljenju
+55. h1_heartrate_min - najmanji broj otkucaja srca pacijenta tokom prvo sata boravka na odeljenju
+56. h1_mbp_max - najviši srednji krvni pritisak pacijenta tokom prvog sata boravka na odeljenju, bilo neinvazivno ili invazivno meren
+57. h1_mbp_min - najniži srednji krvni pritisak pacijenta tokom prvog sata boravka na odeljenju, bilo neinvazivno ili invazivno meren
+58. h1_mbp_noninvasive_max - najviši srednji krvni pritisak pacijenta tokom prvog sata boravka na odeljenju, neinvazivno meren
+59. h1_mbp_noninvasive_min - najniži srednji krvni pritisak pacijenta tokom prvog sata boravka na odeljenju, neinvazivno meren
+60. h1_resprate_max - najveća brzina disanja pacijenta tokom prvog sata boravka na odeljenju
+61. h1_resprate_min - najniža brzina disanja pacijenta tokom prvog sata boravka na odeljenju
+62. h1_spo2_max - najveća saturacija kiseonikom tokom prvog sata boravka u jedinici
+63. h1_spo2_min - najmanja saturacija kiseonikom tokom prvog sata boravka u jedinici
+64. h1_sysbp_max - najviši sistolni pritisak pacijenta tokom prvog sata borvaka na odeljenju, bilo neinvazivno ili invazivno meren
+65. h1_sysbp_min - najniži sistolni pritisak pacijenta tokom prvog sata borvaka na odeljenju, bilo neinvazivno ili invazivno meren
+66. h1_sysbp_noninvasive_max - najviši sistolni pritisak pacijenta tokom prvog sata borvaka na odeljenju, neinvazivno meren
+67. h1_sysbp_noninvasive_min - najniži sistolni pritisak pacijenta tokom prvog sata borvaka na odeljenju, neinvazivno meren
+68. d1_glucose_max - najveća koncentracija glukoze kod pacijenta u serumu ili plazmi tokom prva 24 sata boravka na odeljenju
+69. d1_glucose_min - najmanja koncentracija glukoze kod pacijenta u serumu ili plazmi tokom prva 24 sata boravka na odeljenju
+70. d1_potassium_max - najveća koncentracija kalijuma kod pacijenta u serumu ili plazmi tokom prva 24 sata boravka na odeljenju
+71. d1_potassium_min - najmanja koncentracija kalijuma kod pacijenta u serumu ili plazmi  tokom prva 24 sata boravka na odeljenju
+72. apache_4a_hospital_death_prob - predikcija za bolnički mortalitet APACHE IVa, koristi APACHE III skor i druge kovarijente, uključujući dijagnozu
+73. apache_4a_icu_death_prob - predikcija za mortalitet na intenzivnoj nezi APACHE IVa, koristi APACHE III skor i druge kovarijente, uključujući dijagnozu
+74. aids - da li pacijent ima konačnu dijagnozu sindroma stečene imunodeficijencije(AIDS)(ne samo HIV pozitivan)
+75. cirrhosis - bilo da pacijent ima istoriju teške upotrebe alkohola sa portonom hipertenzijom i varikozitetima, drugim uzorcima ciroze sa dokazima portne hipertenzije i varikoziteta ili cirozom dokazanom biopsijom. Ovaj komorbiditet se ne osnosi na pacijente sa funkcionalnom transplatacijom jetre 
+76. diabetes_mellitus - da li je pacijentu dijagnostikovan dijabetes, bilo juvenilni ili adultni, koji zahteva lekove
+77. hepatic_failure - da li pacjient ima cirozu i dodatne komplikacije uključujući žuticu i ascites, krvarenje u gornjem delu gastroinfestilnog trakta, hepatičnu encefalopatiju ili komu
+78. immunosuppression - da li je imuni sistem pacijenta ugrožen u preiodu od 6 meseci pre prijema na intezivnu negu iz bilo kog od sledećih razloga: terapija zračenjem, hemoterapija, upotreba necitotoksičnih imunosupresivnih lekova, visoke doze steroida (najmanje 0,3 mg/kg/dan metilprednizolona ili ekvivalent najmanje 6 meseci)
+79. leukemia - da li je pacijentu dijagnostikovana akutna ili hronična mijelogena leukemija, akutna ili hronična limfocitna leukemija ili multipli mijelom
+80. lymphoma - da li je pacijentu dijagnostikovan ne-Hodgkin limfom
+81. solid_tumor_with_metastasis - da li je pacijentu dijagnostikovan bilo koji karcinom solidnog tumora (uključujući maligni melanom) koji ima dokaze o metastazama
+82. apache_3j_bodysystem - grupa za prijmnu dijagnostiku APACHE III
+83. apache_2_bodysystem - grupa za prijmnu dijagnostiku APACHE II
+84. hospital_death - da li je pacijent preminuo tokom ove hospitalizacije
+
+* APACHE (Acute Physiology and Chronic Health Evaluation) skor je sistem za procenu ozbiljnosti bolesti i predviđanje ishoda pacijenata smeštenih u intenzivnu negu ili intenzivno odeljenje. APACHE skor je razvijen kako bi se pružila kvantitativna ocena težine pacijentovog stanja i kako bi se podržalo medicinsko osoblje u donošenju odluka o tretmanu i brizi za pacijenta.
+Osnovna ideja APACHE skora je prikupljanje kliničkih podataka o pacijentu, uključujući vitalne znake, laboratorijske rezultate i druge parametre koji ukazuju na fiziološko stanje pacijenta. Ovi podaci se koriste kako bi se izračunao numerički skor koji reflektuje ozbiljnost bolesti. APACHE skor može uključivati parametre kao što su krvni pritisak, puls, temperatura, nivo kiseonika u krvi, pH vrednost, nivo natrijuma i drugi vitalni znaci.
+Na osnovu ovih podataka, APACHE skor generiše ukupan broj bodova. Ovaj broj se zatim koristi kako bi se predvideli različiti ishodi, kao što su smrtnost, dužina boravka u intenzivnoj nezi, potreba za ventilacijom i drugi parametri.
+Različite verzije APACHE skora su razvijane tokom vremena kako bi se poboljšala tačnost i pouzdanost sistema za procenu. APACHE skor je često deo protokola u intenzivnoj nezi i pomaže medicinskom osoblju da prioritetizuje pacijente i pruži optimalnu negu.
+
+
+*PRIPREMA PODATAKA*
+ 
+* Pre nego što krenemo sa obradom podataka, prvo ćemo odraditi pripremu podataka tako što ćemo uraditi transformaciju podataka i srediti NA podatke. Funkcija *summary* daje detaljnu statistiku o svakoj koloni/obeležju to jest: maksimum, minimum, medijanu, broj nedostajućih vrednosti, prvi kvartil, treći kvartil.
+
+```{r}
+summary(dataset)
+```
+
+Možemo da primetimo da imamo dosta NA vrednosti. Skoro 2/3 feature-a ima NA vrednosti i treba da nađemo način da ih pripremimo za dalji rad.
+
+```{r}
+has_all_na_row <- apply(dataset, 1, function(row) all(is.na(row)))
+#has_all_na_row
+```
+
+Ovim smo proverili i zaključili da ne postoji red kojim ima sve NA vrednosti.
+Moramo proveriti koliko svaka kolona ima nedostajućih vrednosti:
+ 
+* Ukoliko kolona ima više od 99% nedostajućih vrednosti, nemoguće je popuniti te vrednosti zato ćemo ih obrisati.
+ 
+* Ukoliko kolona ima više od 10% nedostajućih vrednosti, tada se primenjuje proces prediktovanja nedostajućih vrednosti.
+
+```{r}
+(colMeans(is.na(dataset)))*100 >= 99
+```
+
+Feture koji ima preko 99% NA vrednosti je logic feture …84. U nastavku ćemo ga rešiti.
+
+```{r}
+(colMeans(is.na(dataset)))*100 >= 10
+```
+
+Primećujemo da imamo dva feture-a koji imaju preko 10% NA vrednosti i to su:
+ 
+1. d1_potassium_min - najveća koncentracija kalijuma kod pacijenta u serumu ili plazmu tokom prva 24 sata boravka na odeljenju
+2. d1_potassium_max - najmanja koncentracija glukoze kod pacijenta u serumu ili plazmu tokom prva 24 sata boravka na odeljenju
+
+Pored njih je tu *logic* feture sa 100% *NA* vrednosti.
+
+*IRELEVANTNE/NEPOTREBNE VREDNOSTI*
+
+```{r}
+head(dataset)
+```
+
+```{r}
+dataset <- subset(dataset, select = -c(...84))
+```
+
+Uklonjena je kolona koja nema smisla i ima 100% NA vrednosti.
+
+Kolone koje možemo odmah da obrišemo: *icu_admit_source*, *icu_id*, *icu_stay_type*, *patient_id*, *hospital_id*
+
+```{r}
+dataset <- subset(dataset, select = -c(icu_admit_source, icu_id, icu_stay_type, patient_id, hospital_id))
+```
+
+Primećujemo irelevantne vrednosti u sledećoj koloni:
+
+* pre_icu_los_days - dužina boravka imeđu prijema u bolnicu i prijema na odeljenje
+
+```{r}
+summary(dataset$pre_icu_los_days)
+```
+
+Ovde imamo vrednosti koje su negativne i vrednosti koje nam govore u prilog tome da je neko primljen na odeljenje pola godine nakon što se prijavio u bolnicu. Ovo je kolona koju ćemo obrisati. Takođe nam ovaj feture ne daje značajne podatke tako da ga možemo obrisati.
+
+```{r}
+dataset <- subset(dataset, select = -c(pre_icu_los_days))
+```
+
+Sada posmatramo kolone kao što su:
+1. d1_diasbp_noninvasive_max - najviši dijastolni krvni pritisak pacijenta tokom prva 24 sata boravka u odeljenju, neinvazivno meren
+2. d1_diasbp_noninvasive_min - najniži dijastolni krvni pritisak pacijenta tokom prva 24 sata boravka u odeljenju, neinvazivno meren
+3. d1_mbp_noninvasive_max - najviši srednji krvi pritisak pacijenta tokom prva 24 sata na odeljenju, neinvazivno meren
+4. d1_mbp_noninvasive_min - najniži srednji krvi pritisak pacijenta tokom prva 24 sata na odeljenju, neinvazivno meren
+5. d1_sysbp_noninvasive_max - najviši sistolni krvni pritisak pacijenta tokom prva 24 sata, neinvazivno meren
+6. d1_sysbp_noninvasive_min - najniži sistolni krvni pritisak pacijenta tokom prva 24 sata, neinvazivno meren
+7. h1_diasbp_noninvasive_max - najviši dijastolni krvni pritisak pacijenta tokom prva 24 sata, neinvazivno meren
+8. h1_diasbp_noninvasive_min - najviši dijastolni krvni pritisak pacijenta tokom prva 24 sata, neinvazivno meren
+9. h1_mbp_noninvasive_max - najviši srednji krvni pritisak pacijenta tokom prvog sata boravka na odeljenju, neinvazivno meren
+10. h1_mbp_noninvasive_min - najniži srednji krvni pritisak pacijenta tokom prvog sata boravka na odeljenju, neinvazivno meren
+11. h1_sysbp_noninvasive_max - najviši sistolni pritisak pacijenta tokom prvog sata borvaka na odeljenju, neinvazivno meren
+12. h1_sysbp_noninvasive_min - najniži sistolni pritisak pacijenta tokom prvog sata borvaka na odeljenju, neinvazivno meren
+
+Ovim kolonama je zajedničko to da su njihove vrednosti dobijene neinvazivnim merenjem. Neinvazivno merenje je neprecizno (npr. kod pritiska to je merenje aparatom za pritisak). Takođe za sve ove kolone imamo vrednosti koje su merene invazivno/neinvazivno (invazivno merenje pritiska je direktno ubadanje u arteriju). Zbog toga što nam je invazivno merenje relevantnije, kolone koje sadrže vrednosi neinvazivnog merenja ćemo obrisati.
+
+Prvo ćemo da proverimo da li nam ove kolone mogu pomoći u popunjavanju NA vrednosti kod invazivno merenih vrednosti.
+
+1. d1_diasbp_noninvasive_max
+
+```{r}
+brojac <- 0
+for (i in 1:nrow(dataset)) {
+  if (is.na(dataset$d1_diasbp_noninvasive_max[i]) && is.na(dataset$d1_diasbp_max[i])) {
+    brojac <- brojac+1
+  }
+}
+cat("Broj redova sa NA vrednostima u obema kolonama:", brojac, "\n")
+cat("Broj redova sa NA vrednostima u d1_diasbp_noninvasive_max koloni:", sum(is.na(dataset$d1_diasbp_noninvasive_max)), "\n")
+cat("Broj redova sa NA vrednostima u d1_diasbp_max koloni:", sum(is.na(dataset$d1_diasbp_max)), "\n")
+```
+
+2. d1_diasbp_noninvasive_min
+
+```{r}
+brojac <- 0
+for (i in 1:nrow(dataset)) {
+  if (is.na(dataset$d1_diasbp_noninvasive_min[i]) && is.na(dataset$d1_diasbp_min[i])) {
+    brojac <- brojac+1
+  }
+}
+cat("Broj redova sa NA vrednostima u obema kolonama:", brojac, "\n")
+cat("Broj redova sa NA vrednostima u d1_diasbp_noninvasive_min koloni:", sum(is.na(dataset$d1_diasbp_noninvasive_min)), "\n")
+cat("Broj redova sa NA vrednostima u d1_diasbp_min koloni:", sum(is.na(dataset$d1_diasbp_min)), "\n")
+```
+
+3. d1_mbp_noninvasive_max
+
+```{r}
+brojac <- 0
+for (i in 1:nrow(dataset)) {
+  if (is.na(dataset$d1_mbp_noninvasive_max[i]) && is.na(dataset$d1_mbp_max[i])) {
+    brojac <- brojac+1
+  }
+}
+cat("Broj redova sa NA vrednostima u obema kolonama:", brojac, "\n")
+cat("Broj redova sa NA vrednostima u d1_mbp_noninvasive_max koloni:", sum(is.na(dataset$d1_mbp_noninvasive_max)), "\n")
+cat("Broj redova sa NA vrednostima u d1_mbp_max koloni:", sum(is.na(dataset$d1_mbp_max)), "\n")
+```
+
+4. d1_mbp_noninvasive_min
+
+```{r}
+brojac <- 0
+for (i in 1:nrow(dataset)) {
+  if (is.na(dataset$d1_mbp_noninvasive_min[i]) && is.na(dataset$d1_mbp_min[i])) {
+    brojac <- brojac+1
+  }
+}
+cat("Broj redova sa NA vrednostima u obema kolonama:", brojac, "\n")
+cat("Broj redova sa NA vrednostima u d1_mbp_noninvasive_min koloni:", sum(is.na(dataset$d1_mbp_noninvasive_min)), "\n")
+cat("Broj redova sa NA vrednostima u d1_mbp_min koloni:", sum(is.na(dataset$d1_mbp_min)), "\n")
+```
+
+5. d1_sysbp_noninvasive_max
+
+```{r}
+brojac <- 0
+for (i in 1:nrow(dataset)) {
+  if (is.na(dataset$d1_sysbp_noninvasive_max[i]) && is.na(dataset$d1_sysbp_max[i])) {
+    brojac <- brojac+1
+  }
+}
+cat("Broj redova sa NA vrednostima u obema kolonama:", brojac, "\n")
+cat("Broj redova sa NA vrednostima u d1_sysbp_noninvasive_max koloni:", sum(is.na(dataset$d1_sysbp_noninvasive_max)), "\n")
+cat("Broj redova sa NA vrednostima u d1_sysbp_max koloni:", sum(is.na(dataset$d1_sysbp_max)), "\n")
+```
+
+6. d1_sysbp_noninvasive_min
+
+```{r}
+brojac <- 0
+for (i in 1:nrow(dataset)) {
+  if (is.na(dataset$d1_sysbp_noninvasive_min[i]) && is.na(dataset$d1_sysbp_min[i])) {
+    brojac <- brojac+1
+  }
+}
+cat("Broj redova sa NA vrednostima u obema kolonama:", brojac, "\n")
+cat("Broj redova sa NA vrednostima u d1_sysbp_noninvasive_min koloni:", sum(is.na(dataset$d1_sysbp_noninvasive_min)), "\n")
+cat("Broj redova sa NA vrednostima u d1_sysbp_min koloni:", sum(is.na(dataset$d1_sysbp_min)), "\n")
+```
+
+7. h1_diasbp_noninvasive_max
+
+```{r}
+brojac <- 0
+for (i in 1:nrow(dataset)) {
+  if (is.na(dataset$h1_diasbp_noninvasive_max[i]) && is.na(dataset$h1_diasbp_max[i])) {
+    brojac <- brojac+1
+  }
+}
+cat("Broj redova sa NA vrednostima u obema kolonama:", brojac, "\n")
+cat("Broj redova sa NA vrednostima u h1_diasbp_noninvasive_max koloni:", sum(is.na(dataset$h1_diasbp_noninvasive_max)), "\n")
+cat("Broj redova sa NA vrednostima u h1_diasbp_max koloni:", sum(is.na(dataset$h1_diasbp_max)), "\n")
+```
+
+8. h1_diasbp_noninvasive_min
+
+```{r}
+brojac <- 0
+for (i in 1:nrow(dataset)) {
+  if (is.na(dataset$h1_diasbp_noninvasive_min[i]) && is.na(dataset$h1_diasbp_min[i])) {
+    brojac <- brojac+1
+  }
+}
+cat("Broj redova sa NA vrednostima u obema kolonama:", brojac, "\n")
+cat("Broj redova sa NA vrednostima u h1_diasbp_noninvasive_min koloni:", sum(is.na(dataset$h1_diasbp_noninvasive_min)), "\n")
+cat("Broj redova sa NA vrednostima u h1_diasbp_min koloni:", sum(is.na(dataset$h1_diasbp_min)), "\n")
+```
+
+9. h1_mbp_noninvasive_max
+
+```{r}
+brojac <- 0
+for (i in 1:nrow(dataset)) {
+  if (is.na(dataset$h1_mbp_noninvasive_max[i]) && is.na(dataset$h1_mbp_max[i])) {
+    brojac <- brojac+1
+  }
+}
+cat("Broj redova sa NA vrednostima u obema kolonama:", brojac, "\n")
+cat("Broj redova sa NA vrednostima u h1_mbp_noninvasive_max koloni:", sum(is.na(dataset$h1_mbp_noninvasive_max)), "\n")
+cat("Broj redova sa NA vrednostima u h1_mbp_max koloni:", sum(is.na(dataset$h1_mbp_max)), "\n")
+```
+
+10. h1_mbp_noninvasive_min
+
+```{r}
+brojac <- 0
+for (i in 1:nrow(dataset)) {
+  if (is.na(dataset$h1_mbp_noninvasive_min[i]) && is.na(dataset$h1_mbp_min[i])) {
+    brojac <- brojac+1
+  }
+}
+cat("Broj redova sa NA vrednostima u obema kolonama:", brojac, "\n")
+cat("Broj redova sa NA vrednostima u h1_mbp_noninvasive_min koloni:", sum(is.na(dataset$h1_mbp_noninvasive_min)), "\n")
+cat("Broj redova sa NA vrednostima u h1_mbp_min koloni:", sum(is.na(dataset$h1_mbp_min)), "\n")
+```
+
+11. h1_sysbp_noninvasive_max
+
+```{r}
+brojac <- 0
+for (i in 1:nrow(dataset)) {
+  if (is.na(dataset$h1_sysbp_noninvasive_max[i]) && is.na(dataset$h1_sysbp_max[i])) {
+    brojac <- brojac+1
+  }
+}
+cat("Broj redova sa NA vrednostima u obema kolonama:", brojac, "\n")
+cat("Broj redova sa NA vrednostima u h1_sysbp_noninvasive_max koloni:", sum(is.na(dataset$h1_sysbp_noninvasive_max)), "\n")
+cat("Broj redova sa NA vrednostima u h1_sysbp_max koloni:", sum(is.na(dataset$h1_sysbp_max)), "\n")
+```
+
+12. h1_sysbp_noninvasive_min
+
+```{r}
+brojac <- 0
+for (i in 1:nrow(dataset)) {
+  if (is.na(dataset$h1_sysbp_noninvasive_min[i]) && is.na(dataset$h1_sysbp_min[i])) {
+    brojac <- brojac+1
+  }
+}
+cat("Broj redova sa NA vrednostima u obema kolonama:", brojac, "\n")
+cat("Broj redova sa NA vrednostima u h1_sysbp_noninvasive_min koloni:", sum(is.na(dataset$h1_sysbp_noninvasive_min)), "\n")
+cat("Broj redova sa NA vrednostima u h1_sysbp_min koloni:", sum(is.na(dataset$h1_sysbp_min)), "\n")
+```
+
+Sada smo potvrdili da možemo obrisati ove kolone.
+
+```{r}
+dataset <- subset(dataset, select = -c(d1_diasbp_noninvasive_max, d1_diasbp_noninvasive_min, d1_mbp_noninvasive_max, d1_mbp_noninvasive_min, d1_sysbp_noninvasive_max, d1_sysbp_noninvasive_min, h1_diasbp_noninvasive_max, h1_diasbp_noninvasive_min, h1_mbp_noninvasive_max, h1_mbp_noninvasive_min, h1_sysbp_noninvasive_max, h1_sysbp_noninvasive_min))
+```
+
+```{r}
+str(dataset)
+```
+
+*VALIDACIJA*
+
+U nastavku ćemo rešiti sve "nelogične" vrednosti (sve zabeležene vrednosti koje je nemoguće dostići, u zavisnosti od metrike). Takve vrednosti ćemo tretirati kao greške, i pretvorićemo ih u NA vrednosti koje ćemo u nastavku popuniti. Želimo da sačuvamo što veći broj vrednosti u datasetu. Granice i uslovi za svaku od metrika dobijene su domenskim i ekspertnim znanjem, u skladu sa medicinskom dokumentacijom. 
+
+Proverićemo vrednosti svake od relevantnih kolona, pamtiti indekse onih redova koji krše zadato pravilo, zatim ćemo proći kroz čitav dataset i za svaku kolonu i odgovarajuće indekse pretvoriti "nelogične" vrednosti u NA.
+
+```{r}
+any(is.na(dataset$encounter_id))
+all(!duplicated(dataset$encounter_id)) 
+#ne postoji nijedna nedostajuća vrednost za encounter_id i svaka vrednost je jedinstvena, pa je mozemo u nastavku koristiti
+
+rules <- validator(  "apache_3j_diagnosis" = dataset$apache_3j_diagnosis  >= 100 & dataset$apache_3j_diagnosis  <= 3000
+                    ,"apache_2_diagnosis"= dataset$apache_2_diagnosis >= 100 & dataset$apache_2_diagnosis <= 3000
+                    ,"apache_4a_hospital_death_prob"=dataset$apache_4a_hospital_death_prob >= 0 & dataset$apache_4a_hospital_death_prob <= 1
+                    ,"age"=dataset$age >= 0 & dataset$age < 130
+                    ,"bmi"=dataset$bmi >= 0 & dataset$bmi <= 200
+                    ,"elective_surgery" = dataset$elective_surgery == 0 | dataset$elective_surgery == 1
+                    ,"ethnicity"= dataset$ethnicity == "Caucasian" | dataset$ethnicity == "Hispanic" | dataset$ethnicity == "African American" | dataset$ethnicity == "Asian" |dataset$ethnicity == "Native American" | dataset$ethnicity == "Other/Unknown" #moramo ovako za stringove inace petlja ne radi :(
+                    ,"gender" = dataset$gender == 'F' | dataset$gender == 'M'
+                    ,"height" = dataset$height >= 0 & dataset$height <= 280
+                    ,"icu_type" = dataset$icu_type == "CTICU" | dataset$icu_type == "Med-Surg ICU" | dataset$icu_type == "CCU-CTICU" | dataset$icu_type == "Neuro ICU" | dataset$icu_type == "MICU" | dataset$icu_type == "SICU" | dataset$icu_type == "Cardiac ICU" | dataset$icu_type == "CSICU" 
+                    , "weight" = dataset$weight >= 0 & dataset$weight < 640
+                    ,"apache_post_operative" = dataset$apache_post_operative == 0 | dataset$apache_post_operative == 1
+                    ,"arf_apache" =  dataset$arf_apache == 0 | dataset$arf_apache == 1
+                    ,"gcs_eyes_apache" = dataset$gcs_eyes_apache >= 1 & dataset$gcs_eyes_apache <= 4
+                    ,"gcs_verbal_apache" = dataset$gcs_verbal_apache >= 1 & dataset$gcs_verbal_apache <= 5
+                    ,"gcs_motor_apache" = dataset$gcs_motor_apache >= 1 & dataset$gcs_motor_apache <= 6
+                    , "gcs_unable_apache" =  dataset$gcs_unable_apache == 0 | dataset$gcs_unable_apache == 1
+                    ,"heart_rate_apache" = dataset$heart_rate_apache >= 0 & dataset$heart_rate_apache <= 350
+                    ,"resprate_apache" = dataset$resprate_apache >= 0 & dataset$resprate_apache <= 200
+                    ,"temp_apache" = dataset$temp_apache >= 0 & dataset$temp_apache <= 47
+                    ,"map_apache" = dataset$map_apache >= 0 & dataset$map_apache <= 370
+                    ,"intubated_apache" = dataset$intubated_apache == 0 | dataset$intubated_apache == 1
+                    ,"ventilated_apache" =  dataset$ventilated_apache == 0 | dataset$ventilated_apache == 1
+                    ,"d1_diasbp_max" = dataset$d1_diasbp_max >= 0 & dataset$d1_diasbp_max <= 370
+                    ,"d1_diasbp_min" = dataset$d1_diasbp_min >= 0 & dataset$d1_diasbp_min <= 370
+                    ,"d1_heartrate_max" = dataset$d1_heartrate_max >= 0 & dataset$d1_heartrate_max <= 350
+                    ,"d1_heartrate_min" = dataset$d1_heartrate_min >= 0 & dataset$d1_heartrate_min <= 350
+                    ,"d1_mbp_max" = dataset$d1_mbp_max >= 0 & dataset$d1_mbp_max <= 370
+                    ,"d1_mbp_min" = dataset$d1_mbp_min >= 0 & dataset$d1_mbp_min <= 370
+                    ,"d1_resprate_max" = dataset$d1_resprate_max >= 0 & dataset$d1_resprate_max <= 200
+                    ,"d1_resprate_min" = dataset$d1_resprate_min >= 0 & dataset$d1_resprate_min <= 200
+                    ,"d1_spo2_max" = dataset$d1_spo2_max >= 0 & dataset$d1_spo2_max <= 100
+                    ,"d1_spo2_min" = dataset$d1_spo2_min >= 0 & dataset$d1_spo2_min <= 100
+                    ,"d1_sysbp_max" = dataset$d1_sysbp_max >= 0 & dataset$d1_sysbp_max <= 300
+                    ,"d1_sysbp_min" = dataset$d1_sysbp_min >=40 & dataset$d1_sysbp_min <= 160
+                    , "d1_temp_max" = dataset$d1_temp_max >=36 & dataset$d1_temp_max <= 41
+                    , "d1_temp_min" = dataset$d1_temp_min >=31 & dataset$d1_temp_min <= 38
+                    , "h1_diasbp_max" = dataset$h1_diasbp_max >= 37 & dataset$h1_diasbp_max < 150
+                    , "h1_diasbp_min" = dataset$h1_diasbp_min >= 22 & dataset$h1_diasbp_min <= 115
+                    , "h1_heartrate_max" = dataset$h1_heartrate_max >= 46 & dataset$h1_heartrate_max <= 164
+                    , "h1_heartrate_min" = dataset$h1_heartrate_min >= 36 & dataset$h1_heartrate_min <= 144
+                    , "h1_mbp_max" = dataset$h1_mbp_max >= 49 & dataset$h1_mbp_max <= 165
+                    , "h1_mbp_min" = dataset$h1_mbp_min >= 32 & dataset$h1_mbp_min <= 138
+                    , "h1_resprate_max" = dataset$h1_resprate_max >= 10 & dataset$h1_resprate_max < 100
+                    , "h1_resprate_min" = dataset$h1_resprate_min >= 0 & dataset$h1_resprate_min < 200
+                    , "h1_spo2_max" = dataset$h1_spo2_max >= 0 & dataset$h1_spo2_max <= 100
+                    , "h1_spo2_min" = dataset$h1_spo2_min >= 0 & dataset$h1_spo2_min <= 100
+                    , "h1_sysbp_max" = dataset$h1_sysbp_max >= 75 & dataset$h1_sysbp_max <= 223
+                    , "h1_sysbp_min" = dataset$h1_sysbp_min >= 53 & dataset$h1_sysbp_min <= 175
+                    , "d1_glucose_max" = dataset$d1_glucose_max >= 73 & dataset$d1_glucose_max < 620
+                    , "d1_glucose_min" = dataset$d1_glucose_min >= 33 & dataset$d1_glucose_min < 288
+                    , "d1_potassium_max" = dataset$d1_potassium_max >= 2.5 & dataset$d1_potassium_max <= 7
+                    , "d1_potassium_min" = dataset$d1_potassium_min >= 2.3 & dataset$d1_potassium_min <= 6
+                    , "apache_4a_icu_death_prob"=dataset$apache_4a_icu_death_prob >= 0 & dataset$apache_4a_icu_death_prob <= 1
+                    , "aids" = dataset$aids == 0 | dataset$aids == 1
+                    , "cirrhosis" = dataset$cirrhosis == 0 | dataset$cirrhosis == 1
+                    , "diabetes_mellitus" = dataset$diabetes_mellitus == 0 | dataset$diabetes_mellitus == 1
+                    , "hepatic_failure " = dataset$hepatic_failure == 0 | dataset$hepatic_failure == 1
+                    , "immunosuppression" = dataset$immunosuppression == 0 | dataset$immunosuppression == 1
+                    , "leukemia" = dataset$leukemia == 0 | dataset$leukemia == 1
+                    , "lymphoma" = dataset$lymphoma == 0 | dataset$lymphoma == 1
+                    , "solid_tumor_with_metastasis" = dataset$solid_tumor_with_metastasis == 0 | dataset$solid_tumor_with_metastasis == 1
+                    , "hospital_death" = dataset$hospital_death == 0 | dataset$hospital_death == 1
+                    , "apache_2_bodysystem"= dataset$apache_2_bodysystem == "Cardiovascular" | dataset$apache_2_bodysystem == "Respiratory" | dataset$apache_2_bodysystem == "Metabolic" | dataset$apache_2_bodysystem == "Trauma" | dataset$apache_2_bodysystem == "Neurologic" | dataset$apache_2_bodysystem == "Gastrointestinal" | dataset$apache_2_bodysystem == "Renal/Genitourinary" | dataset$apache_2_bodysystem == "Undefined diagnoses" | dataset$apache_2_bodysystem == "Haematologic" | dataset$apache_2_bodysystem == "Undefined Diagnoses"
+                    ,  "apache_3j_bodysystem"= dataset$apache_3j_bodysystem == "Cardiovascular" | dataset$apache_3j_bodysystem == "Respiratory" | dataset$apache_3j_bodysystem == "Metabolic" | dataset$apache_3j_bodysystem == "Trauma" | dataset$apache_3j_bodysystem == "Neurological" | dataset$apache_3j_bodysystem == "Gastrointestinal" | dataset$apache_3j_bodysystem == "Genitourinary" | dataset$apache_3j_bodysystem == "Musculoskeletal/Skin" | dataset$apache_3j_bodysystem == "Haematological" | dataset$apache_3j_bodysystem == "Sepsis" | dataset$apache_3j_bodysystem == "Gynecological")    
+                  
+output<- confront(dataset, rules)
+plot(output)
+
+set_values_to_na <- function(dataset, column_name, ids) {
+  rows_to_update <- dataset$encounter_id %in% ids
+  dataset[rows_to_update, column_name] <- NA
+  return(dataset)
+}
+rules_len<- length(rules)
+for(i in 1:rules_len)
+{
+  column_name <- names(rules)[i]
+  column_name
+  string_without_dot <- sub("\\.$", "", column_name)
+  string_without_dot
+  violating_rows<-violating(dataset, rules[i])
+  violating_ids<-violating_rows$encounter_id
+  dataset <- set_values_to_na(dataset, string_without_dot, violating_ids)
+}
+
+output <- confront(dataset, rules)
+plot(output)
+
+dataset <- subset(dataset, select = -c(encounter_id))
+```
+
+*NEDOSTAJUĆE VREDNOSTI*
+
+Posvetićemo se NA vrednostima kojih ima uglavnom ispod 9%.
+
+```{r}
+jedinstvene_vrednosti <- sapply(dataset, n_distinct)
+jedinstvene_vrednosti
+```
+
+```{r}
+xtabs(~ ethnicity, data = dataset)
+```
+
+Možemo da primetimo da je *Caucasian* nacionalnost koja je zastupljena kod skoro 80% pacijenata, tako da ćemo NA vrednosti zameniti tim podatkom.
+
+```{r}
+dataset <- dataset %>%
+  mutate(ethnicity = ifelse(is.na(ethnicity), "Caucasian", ethnicity))
+```
+
+Na ovaj način ćemo da nadomestimo ostale NA vrednosti s obzirom na to da nema kolona koje imaju NA vrednosti preko 5%.
+
+```{r}
+xtabs(~ gender, data = dataset)
+```
+
+Ima 54% procenata muškaraca i samo 25 nedostajućih vrednosti za gender.
+
+```{r}
+dataset <- dataset %>%
+  mutate(gender = ifelse(is.na(gender), "M", gender))
+```
+
+```{r}
+xtabs(~ apache_2_bodysystem, data = dataset)
+```
+
+Možemo da primetimo da je *Cardiovascular* grupa za prijemnu dijagnostiku APACHE II koja je zastupljena kod skoro 40% pacijenata.
+
+```{r}
+dataset <- dataset %>%
+  mutate(apache_2_bodysystem = ifelse(is.na(apache_2_bodysystem), "Cardiovascular", apache_2_bodysystem))
+```
+
+```{r}
+xtabs(~ apache_3j_bodysystem, data = dataset)
+```
+
+Možemo da primetimo da je *Cardiovascular* grupa za prijemnu dijagnostiku APACHE III koja je zastupljena kod skoro 30% pacijenata.
+
+```{r}
+dataset <- dataset %>%
+  mutate(apache_3j_bodysystem = ifelse(is.na(apache_3j_bodysystem), "Cardiovascular", apache_3j_bodysystem))
+```
+
+Kada je u pitanje feature *age* pacijente ćemo podeliti u grupe po životnom dobu kako bismo nadomestili NA vrednosti.
+
+```{r}
+minimum <- min(dataset$age, na.rm = TRUE)
+maximum <- max(dataset$age, na.rm = TRUE)
+minimum
+maximum
+```
+
+Vidimo da nam se godine pacijenata kreću između 16 i 89 godina. Što znači da pacijente možemo podeliti na sledeće kategorije *puberty*, *adolescent*, *adult*, *middle-age*, *pensioner*.
+
+```{r}
+puberty <- seq(16,18,1)
+adolescent <- seq(19,20,1)
+adult <- seq(21,40,1)
+middle_age <- seq(41,60,1)
+pensioner <- seq(61,90,1)
+```
+
+```{r}
+dataset$age[ dataset$age %in% puberty ] <- "puberty"
+dataset$age[ dataset$age %in% adolescent ] <- "adolescent"
+dataset$age[ dataset$age %in% adult ] <- "adult"
+dataset$age[ dataset$age %in% middle_age ] <- "middle_age"
+dataset$age[ dataset$age %in% pensioner ] <- "pensioner"
+```
+
+```{r}
+xtabs(~ age, data = dataset)
+```
+
+Na ovaj način smo podelili feture godine na životne dobi pacijenta i primećujemo da najveći broj pacijenta su penzioneri tačnije izmežu 60 i 90 godina. Tako da ćemo NA vrednosti popuniti tim podatkom.
+
+```{r}
+dataset <- dataset %>%
+  mutate(age = ifelse(is.na(age), "pensioner", age))
+```
+
+Na osnovu životne dobi i na osnovu područja sa kog dolazi (rase) možemo da odredimo prosečnu visinu i težinu. Za stare osobe važi da izgube otprilike 2.5 cm visine, nezavisno od područja sa kog dolaze.
+
+*Prosečna visina*
+
+1.1. African American dečaka u pubertetu: oko 150 cm, u odraslom periodu: 180 cm, stare osobe: 177.5 cm
+1.2. African American devojčice u pubertetu: oko 145 cm, u odraslom periodu: 170 cm, stare osobe: 167.5 cm
+
+2.1. Asian dečaka u pubertetu: oko 150 cm, u odraslom periodu: 170 cm, stare osobe: 167.5 cm
+2.2. Asian devojčice u pubertetu: oko 145 cm, u odraslom periodu: 157 cm, stare osobe: 154.5 cm
+
+3.1. Caucasian dečaka u pubertetu: oko 150 cm, u odraslom periodu: 180 cm, stare osobe: 177.5 cm
+3.2. Caucasian devojčice u pubertetu: oko 145 cm, u odraslom periodu: 167 cm, stare osobe: 164.5 cm
+
+4.1. Hispanic dečaka u pubertetu: oko 150 cm, u odraslom periodu: 173 cm, stare osobe: 170.5 cm
+4.2. Hispanic devojčice u pubertetu: oko 145 cm, u odraslom periodu: 160 cm, stare osobe: 157.5 cm
+
+5.1. Native American dečaka u pubertetu: oko 150 cm, u odraslom periodu: 177 cm, stare osobe: 174.5 cm
+5.2. Native American devojčice u pubertetu: oko 145 cm, u odraslom periodu: 164 cm, stare osobe: 161.5 cm
+
+*Prosečna težina*
+
+1.1 African American dečaka u pubertetu: oko 40 kg, u odraslom periodu: 75 kg, stare osobe: 77 kg
+1.2. African American devojčice u pubertetu: oko 37 kg, u odraslom periodu: 66 kg, stare osobe: 57 kg
+
+2.1. Asian dečaka u pubertetu: oko 40 kg, u odraslom periodu: 67 kg, stare osobe: 70 kg
+2.2. Asian devojčice u pubertetu: oko 37 kg, u odraslom periodu: 57 kg, stare osobe: 62 kg
+
+3.1. Caucasian dečaka u pubertetu: oko 40 kg, u odraslom periodu: 77 kg, stare osobe: 80 kg
+3.2. Caucasian devojčice u pubertetu: oko 37 kg, u odraslom periodu: 62 kg, stare osobe: 70 kg
+
+4.1. Hispanic dečaka u pubertetu: oko 40 kg, u odraslom periodu: 77 kg, stare osobe: 80 kg
+4.2. Hispanic devojčice u pubertetu: oko 37 kg, u odraslom periodu: 57 kg, stare osobe: 68 kg
+
+5.1. Native American dečaka u pubertetu: oko 40 kg, u odraslom periodu: 77 kg, stare osobe: 70 kg
+5.1. Native American devojčice u pubertetu: oko 37 kg, u odraslom periodu: 57 kg, stare osobe: 60 kg
+
+*!*
+* S obzirom na to da imamo Other/Unknown poreklo pacijenta, globalna prosečna visina i težina je najpribližnija *Caucasian* poreklu tako da ćemo iskoristiti te podatke.
+
+Za početak se bavimo *height* feature-om:
+
+```{r}
+dataset$height[(is.na(dataset$height)) & (dataset$gender == "M") & (dataset$ethnicity == "African American") & (dataset$age == "puberty")] <- 150
+dataset$height[(is.na(dataset$height)) & (dataset$gender == "M") & (dataset$ethnicity == "African American") & (dataset$age == "pensioner")] <- 177.5
+dataset$height[(is.na(dataset$height)) & (dataset$gender == "M") & (dataset$ethnicity == "African American") & (dataset$age == "adolescent" | dataset$age == "adult" | dataset$age == "middle_age")] <- 180
+
+dataset$height[(is.na(dataset$height)) & (dataset$gender == "F") & (dataset$ethnicity == "African American") & (dataset$age == "puberty")] <- 145
+dataset$height[(is.na(dataset$height)) & (dataset$gender == "F") & (dataset$ethnicity == "African American") & (dataset$age == "pensioner")] <- 167.5
+dataset$height[(is.na(dataset$height)) & (dataset$gender == "F") & (dataset$ethnicity == "African American") & (dataset$age == "adolescent"| dataset$age == "adult" | dataset$age == "middle_age")] <- 170
+```
+
+```{r}
+dataset$height[(is.na(dataset$height)) & (dataset$gender == "M") & (dataset$ethnicity == "Asian") & (dataset$age == "puberty")] <- 150
+dataset$height[(is.na(dataset$height)) & (dataset$gender == "M") & (dataset$ethnicity == "Asian") & (dataset$age == "pensioner")] <- 167.5
+dataset$height[(is.na(dataset$height)) & (dataset$gender == "M") & (dataset$ethnicity == "Asian") & (dataset$age == "adolescent" | dataset$age == "adult" | dataset$age == "middle_age")] <- 170
+
+dataset$height[(is.na(dataset$height)) & (dataset$gender == "F") & (dataset$ethnicity == "Asian") & (dataset$age == "puberty")] <- 145
+dataset$height[(is.na(dataset$height)) & (dataset$gender == "F") & (dataset$ethnicity == "Asian") & (dataset$age == "pensioner")] <- 154.5
+dataset$height[(is.na(dataset$height)) & (dataset$gender == "F") & (dataset$ethnicity == "Asian") & (dataset$age == "adolescent" | dataset$age == "adult" | dataset$age == "middle_age")] <- 157
+```
+
+```{r}
+dataset$height[(is.na(dataset$height)) & (dataset$gender == "M") & (dataset$ethnicity == "Caucasian" | dataset$ethnicity == "Other/Unknown") & (dataset$age == "puberty")] <- 150
+dataset$height[(is.na(dataset$height)) & (dataset$gender == "M") & (dataset$ethnicity == "Caucasian" | dataset$ethnicity == "Other/Unknown") & (dataset$age == "pensioner")] <- 177.5
+dataset$height[(is.na(dataset$height)) & (dataset$gender == "M") & (dataset$ethnicity == "Caucasian" | dataset$ethnicity == "Other/Unknown") & (dataset$age == "adolescent" | dataset$age == "adult" | dataset$age == "middle_age")] <- 180
+
+dataset$height[(is.na(dataset$height)) & (dataset$gender == "F") & (dataset$ethnicity == "Caucasian" | dataset$ethnicity == "Other/Unknown") & (dataset$age == "puberty")] <- 145
+dataset$height[(is.na(dataset$height)) & (dataset$gender == "F") & (dataset$ethnicity == "Caucasian" | dataset$ethnicity == "Other/Unknown") & (dataset$age == "pensioner")] <- 164.5
+dataset$height[(is.na(dataset$height)) & (dataset$gender == "F") & (dataset$ethnicity == "Caucasian" | dataset$ethnicity == "Other/Unknown") & (dataset$age == "adolescent" | dataset$age == "adult" | dataset$age == "middle_age")] <- 167
+```
+
+```{r}
+dataset$height[(is.na(dataset$height)) & (dataset$gender == "M") & (dataset$ethnicity == "Hispanic") & (dataset$age == "puberty")] <- 150
+dataset$height[(is.na(dataset$height)) & (dataset$gender == "M") & (dataset$ethnicity == "Hispanic") & (dataset$age == "pensioner")] <- 170.5
+dataset$height[(is.na(dataset$height)) & (dataset$gender == "M") & (dataset$ethnicity == "Hispanic") & (dataset$age == "adolescent" | dataset$age == "adult" | dataset$age == "middle_age")] <- 173
+
+dataset$height[(is.na(dataset$height)) & (dataset$gender == "F") & (dataset$ethnicity == "Hispanic") & (dataset$age == "puberty")] <- 145
+dataset$height[(is.na(dataset$height)) & (dataset$gender == "F") & (dataset$ethnicity == "Hispanic") & (dataset$age == "pensioner")] <- 157.5
+dataset$height[(is.na(dataset$height)) & (dataset$gender == "F") & (dataset$ethnicity == "Hispanic") & (dataset$age == "adolescent" | dataset$age == "adult" | dataset$age == "middle_age")] <- 160
+```
+
+```{r}
+dataset$height[(is.na(dataset$height)) & (dataset$gender == "M") & (dataset$ethnicity == "Native American") & (dataset$age == "puberty")] <- 150
+dataset$height[(is.na(dataset$height)) & (dataset$gender == "M") & (dataset$ethnicity == "Native American") & (dataset$age == "pensioner")] <- 174.5
+dataset$height[(is.na(dataset$height)) & (dataset$gender == "M") & (dataset$ethnicity == "Native American") & (dataset$age == "adolescent" | dataset$age == "adult" | dataset$age == "middle_age")] <- 177
+
+dataset$height[(is.na(dataset$height)) & (dataset$gender == "F") & (dataset$ethnicity == "Native American") & (dataset$age == "puberty")] <- 145
+dataset$height[(is.na(dataset$height)) & (dataset$gender == "F") & (dataset$ethnicity == "Native American") & (dataset$age == "pensioner")] <- 161.5
+dataset$height[(is.na(dataset$height)) & (dataset$gender == "F") & (dataset$ethnicity == "Native American") & (dataset$age == "adolescent" | dataset$age == "adult" | dataset$age == "middle_age")] <- 164
+```
+
+Kada smo završili sa visinom, na isti način ćemo da rešimo problem NA vrednosti kod feature-a *weight*:
+
+```{r}
+dataset$weight[(is.na(dataset$weight)) & (dataset$gender == "M") & (dataset$ethnicity == "African American") & (dataset$age == "puberty")] <- 40.00
+dataset$weight[(is.na(dataset$weight)) & (dataset$gender == "M") & (dataset$ethnicity == "African American") & (dataset$age == "pensioner")] <- 77.00
+dataset$weight[(is.na(dataset$weight)) & (dataset$gender == "M") & (dataset$ethnicity == "African American") & (dataset$age == "adolescent" | dataset$age == "adult" | dataset$age == "middle_age")] <- 75.00
+
+dataset$weight[(is.na(dataset$weight)) & (dataset$gender == "F") & (dataset$ethnicity == "African American") & (dataset$age == "puberty")] <- 37.00
+dataset$weight[(is.na(dataset$weight)) & (dataset$gender == "F") & (dataset$ethnicity == "African American") & (dataset$age == "pensioner")] <- 57.00
+dataset$weight[(is.na(dataset$weight)) & (dataset$gender == "F") & (dataset$ethnicity == "African American") & (dataset$age == "adolescent" | dataset$age == "adult" | dataset$age == "middle_age")] <- 66.00
+```
+
+```{r}
+dataset$weight[(is.na(dataset$weight)) & (dataset$gender == "M") & (dataset$ethnicity == "Asian") & (dataset$age == "puberty")] <- 40.00
+dataset$weight[(is.na(dataset$weight)) & (dataset$gender == "M") & (dataset$ethnicity == "Asian") & (dataset$age == "pensioner")] <- 70.00
+dataset$weight[(is.na(dataset$weight)) & (dataset$gender == "M") & (dataset$ethnicity == "Asian") & (dataset$age == "adolescent" | dataset$age == "adult" | dataset$age == "middle_age")] <- 67
+
+dataset$weight[(is.na(dataset$weight)) & (dataset$gender == "F") & (dataset$ethnicity == "Asian") & (dataset$age == "puberty")] <- 37.00
+dataset$weight[(is.na(dataset$weight)) & (dataset$gender == "F") & (dataset$ethnicity == "Asian") & (dataset$age == "pensioner")] <- 62.00
+dataset$weight[(is.na(dataset$weight)) & (dataset$gender == "F") & (dataset$ethnicity == "Asian") & (dataset$age == "adolescent" | dataset$age == "adult" | dataset$age == "middle_age")] <- 57.00
+```
+
+```{r}
+dataset$weight[(is.na(dataset$weight)) & (dataset$gender == "M") & (dataset$ethnicity == "Caucasian" | dataset$ethnicity == "Other/Unknown") & (dataset$age == "puberty")] <- 40.00
+dataset$weight[(is.na(dataset$weight)) & (dataset$gender == "M") & (dataset$ethnicity == "Caucasian" | dataset$ethnicity == "Other/Unknown") & (dataset$age == "pensioner")] <- 80.00
+dataset$weight[(is.na(dataset$weight)) & (dataset$gender == "M") & (dataset$ethnicity == "Caucasian" | dataset$ethnicity == "Other/Unknown") & (dataset$age == "adolescent" | dataset$age == "adult" | dataset$age == "middle_age")] <- 77.00
+
+dataset$weight[(is.na(dataset$weight)) & (dataset$gender == "F") & (dataset$ethnicity == "Caucasian" | dataset$ethnicity == "Other/Unknown") & (dataset$age == "puberty")] <- 37.00
+dataset$weight[(is.na(dataset$weight)) & (dataset$gender == "F") & (dataset$ethnicity == "Caucasian" | dataset$ethnicity == "Other/Unknown") & (dataset$age == "pensioner")] <- 70.00
+dataset$weight[(is.na(dataset$weight)) & (dataset$gender == "F") & (dataset$ethnicity == "Caucasian" | dataset$ethnicity == "Other/Unknown") & (dataset$age == "adolescent" | dataset$age == "adult" | dataset$age == "middle_age")] <- 62.00
+```
+
+```{r}
+dataset$weight[(is.na(dataset$weight)) & (dataset$gender == "M") & (dataset$ethnicity == "Hispanic") & (dataset$age == "puberty")] <- 40.00
+dataset$weight[(is.na(dataset$weight)) & (dataset$gender == "M") & (dataset$ethnicity == "Hispanic") & (dataset$age == "pensioner")] <- 80.00
+dataset$weight[(is.na(dataset$weight)) & (dataset$gender == "M") & (dataset$ethnicity == "Hispanic") & (dataset$age == "adolescent" | dataset$age == "adult" | dataset$age == "middle_age")] <- 77.00
+
+dataset$weight[(is.na(dataset$weight)) & (dataset$gender == "F") & (dataset$ethnicity == "Hispanic") & (dataset$age == "puberty")] <- 37.00
+dataset$weight[(is.na(dataset$weight)) & (dataset$gender == "F") & (dataset$ethnicity == "Hispanic") & (dataset$age == "pensioner")] <- 68.00
+dataset$weight[(is.na(dataset$weight)) & (dataset$gender == "F") & (dataset$ethnicity == "Hispanic") & (dataset$age == "adolescent" | dataset$age == "adult" | dataset$age == "middle_age")] <- 57.00
+```
+
+```{r}
+dataset$weight[(is.na(dataset$weight)) & (dataset$gender == "M") & (dataset$ethnicity == "Native American") & (dataset$age == "puberty")] <- 40.00
+dataset$weight[(is.na(dataset$weight)) & (dataset$gender == "M") & (dataset$ethnicity == "Native American") & (dataset$age == "pensioner")] <- 77.00
+dataset$weight[(is.na(dataset$weight)) & (dataset$gender == "M") & (dataset$ethnicity == "Native American") & (dataset$age == "adolescent" | dataset$age == "adult" | dataset$age == "middle_age")] <- 70.00
+
+dataset$weight[(is.na(dataset$weight)) & (dataset$gender == "F") & (dataset$ethnicity == "Native American") & (dataset$age == "puberty")] <- 37.00
+dataset$weight[(is.na(dataset$weight)) & (dataset$gender == "F") & (dataset$ethnicity == "Native American") & (dataset$age == "pensioner")] <- 60.00
+dataset$weight[(is.na(dataset$weight)) & (dataset$gender == "F") & (dataset$ethnicity == "Native American") & (dataset$age == "adolescent" | dataset$age == "adult" | dataset$age == "middle_age")] <- 57.00
+```
+
+Na osnovu *height* i *weight* feature-a možemo da izračunamo BMI(Body mass index) na sledeći način: telesna masa(kg) / visina(m)^2.
+
+```{r}
+dataset$bmi[is.na(dataset$bmi)] = dataset$weight / (dataset$height/100)^2
+```
+
+```{r}
+summary(dataset$bmi)
+```
+
+1. d1_diasbp_max - najviši dijastolni krvni pritisak pacijenta tokom prva 24 sata boravka u odeljenju, bilo invazivno ili neinvazivno meren
+2. d1_diasbp_min - najniži dijastolni krvni pritisak pacijenta tokom prva 24 sata boravka u odeljenju, bilo invazivno ili neinvazivno meren
+
+Što se tiče podataka za pritisak, imamo podatke za izmeren najviši donji (dijastolni) i najviši gornji (sistolni) pritisak, meren u toku 1h (h1) i u toku 24h (d1) boravka na odeljenju.
+
+```{r}
+sum(is.na(dataset$d1_diasbp_max))
+sum(is.na(dataset$d1_diasbp_min))
+```
+
+Vidimo da ima 165 nedostajućih vrednosti za d1_diasbp_max i d1_diasbp_min. Na krvni pritisak najviše utiče starost pacijenta i bmi. Prvo što ćemo odraditi jeste da ćemo dodati novu kolonu koja će predstavljati bmi kao kategorijsku promenljivu. 
+
+1. BMI manje od 18.5: Nedovoljna težina
+2.  BMI 18.5 - 24.9: Normalna težina
+3.  BMI 25.0 - 29.9: Prekomerna težina
+4.  BMI 30.0 i više: Gojaznost
+
+```{r}
+dataset$BMI_category <- ifelse(dataset$bmi < 18.5, "underweight", 
+                          ifelse(dataset$bmi < 25.0, "normal weight",
+                          ifelse(dataset$bmi < 30.0, "overweight","obesity")))
+```
+
+Sada možemo iskoristiti grupe po godinama i bmi po kategorijama kako bismo odredili srednje vrednosti d1_diasbp_max za svaku od kombinacija kategorija.
+
+```{r}
+group_bmi_age_diasbp_max <- aggregate(d1_diasbp_max ~ BMI_category + age, data = dataset, FUN = mean, na.rm = TRUE)
+```
+
+1. d1_diasbp_max - za penzioneri, odrasli, adolescenti, osobe u srednjim godinama, osobe u pubertetu
+
+```{r}
+#penzioneri
+dataset$d1_diasbp_max[(is.na(dataset$d1_diasbp_max) & dataset$age == "pensioner" & dataset$BMI_category == "underweight")]<-86
+dataset$d1_diasbp_max[(is.na(dataset$d1_diasbp_max) & dataset$age == "pensioner" & dataset$BMI_category == "normal weight")] <-87
+dataset$d1_diasbp_max[(is.na(dataset$d1_diasbp_max) & dataset$age == "pensioner" & dataset$BMI_category == "overweight")] <-87
+dataset$d1_diasbp_max[(is.na(dataset$d1_diasbp_max) & dataset$age == "pensioner" & dataset$BMI_category == "obesity")]<-88
+
+#odrasli 
+
+dataset$d1_diasbp_max[(is.na(dataset$d1_diasbp_max) & dataset$age == "adult" & dataset$BMI_category == "underweight")]<-88
+dataset$d1_diasbp_max[(is.na(dataset$d1_diasbp_max) & dataset$age == "adult" & dataset$BMI_category == "normal weight")] <-88
+dataset$d1_diasbp_max[(is.na(dataset$d1_diasbp_max) & dataset$age == "adult" & dataset$BMI_category == "overweight")] <-90
+dataset$d1_diasbp_max[(is.na(dataset$d1_diasbp_max) & dataset$age == "adult" & dataset$BMI_category == "obesity")]<-92
+
+#adolescenti.
+
+dataset$d1_diasbp_max[(is.na(dataset$d1_diasbp_max) & dataset$age == "adolescent" & dataset$BMI_category == "underweight")]<-82
+dataset$d1_diasbp_max[(is.na(dataset$d1_diasbp_max) & dataset$age == "adolescent" & dataset$BMI_category == "normal weight")] <-83
+dataset$d1_diasbp_max[(is.na(dataset$d1_diasbp_max) & dataset$age == "adolescent" & dataset$BMI_category == "overweight")] <-85
+dataset$d1_diasbp_max[(is.na(dataset$d1_diasbp_max) & dataset$age == "adolescent" & dataset$BMI_category == "obesity")]<-87
+
+#osobe u srednjim godinama
+
+dataset$d1_diasbp_max[(is.na(dataset$d1_diasbp_max) & dataset$age == "middle_age" & dataset$BMI_category == "underweight")]<-90
+dataset$d1_diasbp_max[(is.na(dataset$d1_diasbp_max) & dataset$age == "middle_age" & dataset$BMI_category == "normal weight")] <-90
+dataset$d1_diasbp_max[(is.na(dataset$d1_diasbp_max) & dataset$age == "middle_age" & dataset$BMI_category == "overweight")] <-91
+dataset$d1_diasbp_max[(is.na(dataset$d1_diasbp_max) & dataset$age == "middle_age" & dataset$BMI_category == "obesity")]<-92
+
+#osobe u pubertetu
+
+dataset$d1_diasbp_max[(is.na(dataset$d1_diasbp_max) & dataset$age == "puberty" & dataset$BMI_category == "underweight")]<-80
+dataset$d1_diasbp_max[(is.na(dataset$d1_diasbp_max) & dataset$age == "puberty" & dataset$BMI_category == "normal weight")] <-82
+dataset$d1_diasbp_max[(is.na(dataset$d1_diasbp_max) & dataset$age == "puberty" & dataset$BMI_category == "overweight")] <-86
+dataset$d1_diasbp_max[(is.na(dataset$d1_diasbp_max) & dataset$age == "puberty" & dataset$BMI_category == "obesity")]<-85
+```
+
+2. d1_diasbp_min - za penzioneri, odrasli, adolescenti, osobe u srednjim godinama, osobe u pubertetu
+
+```{r}
+group_bmi_age_diasbp_min <- aggregate(d1_diasbp_min ~ BMI_category + age, data = dataset, FUN = mean, na.rm = TRUE)
+```
+
+```{r}
+#penzioneri
+dataset$d1_diasbp_min[(is.na(dataset$d1_diasbp_min) & dataset$age == "pensioner" & dataset$BMI_category == "underweight")]<-47
+dataset$d1_diasbp_min[(is.na(dataset$d1_diasbp_min) & dataset$age == "pensioner" & dataset$BMI_category == "normal weight")]<-48
+dataset$d1_diasbp_min[(is.na(dataset$d1_diasbp_min) & dataset$age == "pensioner" & dataset$BMI_category == "overweight")] <-48
+dataset$d1_diasbp_min[(is.na(dataset$d1_diasbp_min) & dataset$age == "pensioner" & dataset$BMI_category == "obesity")]<-48
+
+#osdrasli 
+
+dataset$d1_diasbp_min[(is.na(dataset$d1_diasbp_min) & dataset$age == "adult" & dataset$BMI_category == "underweight")]<-53
+dataset$d1_diasbp_min[(is.na(dataset$d1_diasbp_min) & dataset$age == "adult" & dataset$BMI_category == "normal weight")] <-54
+dataset$d1_diasbp_min[(is.na(dataset$d1_diasbp_min) & dataset$age == "adult" & dataset$BMI_category == "overweight")] <-55
+dataset$d1_diasbp_min[(is.na(dataset$d1_diasbp_min) & dataset$age == "adult" & dataset$BMI_category == "obesity")]<-55
+
+#adolescenti
+
+dataset$d1_diasbp_min[(is.na(dataset$d1_diasbp_min) & dataset$age == "adolescent" & dataset$BMI_category == "underweight")]<-49
+dataset$d1_diasbp_min[(is.na(dataset$d1_diasbp_min) & dataset$age == "adolescent" & dataset$BMI_category == "normal weight")] <-50
+dataset$d1_diasbp_min[(is.na(dataset$d1_diasbp_min) & dataset$age == "adolescent" & dataset$BMI_category == "overweight")] <-49
+dataset$d1_diasbp_min[(is.na(dataset$d1_diasbp_min) & dataset$age == "adolescent" & dataset$BMI_category == "obesity")]<-52
+
+#osobe u srednjim godinama
+
+dataset$d1_diasbp_min[(is.na(dataset$d1_diasbp_min) & dataset$age == "middle_age" & dataset$BMI_category == "underweight")]<-54
+dataset$d1_diasbp_min[(is.na(dataset$d1_diasbp_min) & dataset$age == "middle_age" & dataset$BMI_category == "normal weight")] <-54
+dataset$d1_diasbp_min[(is.na(dataset$d1_diasbp_min) & dataset$age == "middle_age" & dataset$BMI_category == "overweight")] <-55
+dataset$d1_diasbp_min[(is.na(dataset$d1_diasbp_min) & dataset$age == "middle_age" & dataset$BMI_category == "obesity")]<-53
+
+#osobe u pubertetu
+
+dataset$d1_diasbp_min[(is.na(dataset$d1_diasbp_min) & dataset$age == "puberty" & dataset$BMI_category == "underweight")]<-48
+dataset$d1_diasbp_min[(is.na(dataset$d1_diasbp_min) & dataset$age == "puberty" & dataset$BMI_category == "normal weight")] <-48
+dataset$d1_diasbp_min[(is.na(dataset$d1_diasbp_min) & dataset$age == "puberty" & dataset$BMI_category == "overweight")] <-47
+dataset$d1_diasbp_min[(is.na(dataset$d1_diasbp_min) & dataset$age == "puberty" & dataset$BMI_category == "obesity")]<-52
+```
+
+1. d1_heartrate_max - najveći broj otkucaja srca tokom prva 24 sata boravka na odeljenju
+2. d1_heartrate_min - najmanji broj otkucaja srca tokom prva 24 sata boravka na odeljenju
+
+Nakon istraživanja saznali smo da na broj otkucaja srca najviše utiče startost zato ćemo za nedostajuće vrednosti koristi srednju vrednost najvećeg broja otkucaja srca za svaku starosnu grupu.
+
+```{r}
+sum(is.na(dataset$d1_heartrate_max))
+sum(is.na(dataset$d1_heartrate_min))
+```
+
+Imamo 145 nedostajućih vrednosti za d1_heartrate_min i d1_heartrate_max.
+
+```{r}
+group_age_heartrate_max <- aggregate(d1_heartrate_max ~ age, data = dataset, FUN = mean,na.rm = TRUE)
+group_age_heartrate_min <- aggregate(d1_heartrate_min ~ age, data = dataset, FUN = mean,na.rm = TRUE)
+```
+
+```{r}
+#d1_heartrate_max
+dataset$d1_heartrate_max[(is.na(dataset$d1_heartrate_max) & dataset$age == "puberty")]<-113
+dataset$d1_heartrate_max[(is.na(dataset$d1_heartrate_max) & dataset$age == "middle_age")] <-104
+dataset$d1_heartrate_max[(is.na(dataset$d1_heartrate_max) & dataset$age == "adolescent")] <-113
+dataset$d1_heartrate_max[(is.na(dataset$d1_heartrate_max) & dataset$age == "adult")]<-110
+dataset$d1_heartrate_max[(is.na(dataset$d1_heartrate_max) & dataset$age == "pensioner")]<-101
+
+#d1_heartrate_min
+group_age_heartrate_min <- aggregate(d1_heartrate_min ~ age, data = dataset, FUN = mean,na.rm = TRUE)
+dataset$d1_heartrate_min[(is.na(dataset$d1_heartrate_min) & dataset$age == "puberty")]<-75
+dataset$d1_heartrate_min[(is.na(dataset$d1_heartrate_min) & dataset$age == "middle_age")]<-72
+dataset$d1_heartrate_min[(is.na(dataset$d1_heartrate_min) & dataset$age == "adolescent")] <-75
+dataset$d1_heartrate_min[(is.na(dataset$d1_heartrate_min) & dataset$age == "adult")]<-75
+dataset$d1_heartrate_min[(is.na(dataset$d1_heartrate_min) & dataset$age == "pensioner")]<-69
+```
+
+1. d1_resprate_max - najveća brzina disanja izmerena tokom prva 24 sata na odeljenju 
+2. d1_resprate_min - najmanja brzina disanja izmerena tokom prva 24 sata na odeljenju 
+
+```{r}
+#d1_resprate_max
+group_age_respirate_max <- aggregate(d1_resprate_max ~ age, data = dataset, FUN = mean,na.rm = TRUE)
+dataset$d1_resprate_max[(is.na(dataset$d1_resprate_max) & dataset$age == "puberty")]<-27
+dataset$d1_resprate_max[(is.na(dataset$d1_resprate_max) & dataset$age == "middle_age")]<-29
+dataset$d1_resprate_max[(is.na(dataset$d1_resprate_max) & dataset$age == "adolescent")] <-28
+dataset$d1_resprate_max[(is.na(dataset$d1_resprate_max) & dataset$age == "adult")]<-29
+dataset$d1_resprate_max[(is.na(dataset$d1_resprate_max) & dataset$age == "pensioner")]<-29
+
+#d1_resprate_min
+group_age_respirate_min <- aggregate(d1_resprate_min ~ age, data = dataset, FUN = mean,na.rm = TRUE)
+dataset$d1_resprate_min[(is.na(dataset$d1_resprate_min) & dataset$age == "puberty")]<-13
+dataset$d1_resprate_min[(is.na(dataset$d1_resprate_min) & dataset$age == "middle_age")]<-12
+dataset$d1_resprate_min[(is.na(dataset$d1_resprate_min) & dataset$age == "adolescent")] <-13
+dataset$d1_resprate_min[(is.na(dataset$d1_resprate_min) & dataset$age == "adult")]<-13
+dataset$d1_resprate_min[(is.na(dataset$d1_resprate_min) & dataset$age == "pensioner")]<-13
+```
+
+1. d1_spo2_max - najveća saturacija pacijenta tokom prva 24 sata boravka na odeljenju
+2. d1_spo2_min - najmanja saturacija pacijenta tokom prva 24 sata boravka na odeljenju
+
+```{r}
+sum(is.na(dataset$d1_spo2_max))
+sum(is.na(dataset$d1_spo2_min))
+```
+
+
+Imamo 333 nedostajućih vrednosti za d1_spo2_max i d1_spo2_min (približno 0.0036 od ukupnog broja podataka). I za ova dva feature-a možemo potražiti prosek po starosnim grupama.
+
+```{r}
+#d1_spo2_max
+group_age_spo2_max <- aggregate(d1_spo2_max ~ age, data = dataset, FUN = mean,na.rm = TRUE)
+dataset$d1_spo2_max[(is.na(dataset$d1_spo2_max) & dataset$age == "puberty")]<-100
+dataset$d1_spo2_max[(is.na(dataset$d1_spo2_max) & dataset$age == "middle_age")]<-99
+dataset$d1_spo2_max[(is.na(dataset$d1_spo2_max) & dataset$age == "adolescent")] <-100
+dataset$d1_spo2_max[(is.na(dataset$d1_spo2_max) & dataset$age == "adult")]<-99
+dataset$d1_spo2_max[(is.na(dataset$d1_spo2_max) & dataset$age == "pensioner")]<-99
+
+#d1_spo2_min
+group_age_spo2_min <- aggregate(d1_spo2_min ~ age, data = dataset, FUN = mean,na.rm = TRUE)
+dataset$d1_spo2_min[(is.na(dataset$d1_spo2_min) & dataset$age == "puberty")]<-93
+dataset$d1_spo2_min[(is.na(dataset$d1_spo2_min) & dataset$age == "middle_age")]<-91
+dataset$d1_spo2_min[(is.na(dataset$d1_spo2_min) & dataset$age == "adolescent")] <-93
+dataset$d1_spo2_min[(is.na(dataset$d1_spo2_min) & dataset$age == "adult")]<-92
+dataset$d1_spo2_min[(is.na(dataset$d1_spo2_min) & dataset$age == "pensioner")]<-90
+```
+
+1. d1_temp_max - najviša temperatura tela pacijenta izmerena tokom prva 24 sata, invazivno merena
+2. d1_temp_min - najniža temperatura tela pacijenta izmerena tokom prva 24 sata
+
+```{r}
+sum(is.na(dataset$d1_temp_min))
+sum(is.na(dataset$d1_temp_max))
+```
+
+Za ove dve kolone nam fali oko 0.025% vrednosti. Popunićemo ih prosečnim vrednostima po godinama.
+
+```{r}
+group_age_temp_max <- aggregate(d1_temp_max ~ age, data = dataset, FUN = mean,na.rm = TRUE)
+dataset$d1_temp_max[(is.na(dataset$d1_temp_max) & dataset$age == "puberty")]<-37
+dataset$d1_temp_max[(is.na(dataset$d1_temp_max) & dataset$age == "middle_age")]<-37
+dataset$d1_temp_max[(is.na(dataset$d1_temp_max) & dataset$age == "adolescent")] <-37
+dataset$d1_temp_max[(is.na(dataset$d1_temp_max) & dataset$age == "adult")]<-37
+dataset$d1_temp_max[(is.na(dataset$d1_temp_max) & dataset$age == "pensioner")]<-37
+
+group_age_temp_min <- aggregate(d1_temp_min ~ age, data = dataset, FUN = mean,na.rm = TRUE)
+dataset$d1_temp_min[(is.na(dataset$d1_temp_min) & dataset$age == "puberty")]<-36
+dataset$d1_temp_min[(is.na(dataset$d1_temp_min) & dataset$age == "middle_age")]<-36
+dataset$d1_temp_min[(is.na(dataset$d1_temp_min) & dataset$age == "adolescent")] <-36
+dataset$d1_temp_min[(is.na(dataset$d1_temp_min) & dataset$age == "adult")]<-36
+dataset$d1_temp_min[(is.na(dataset$d1_temp_min) & dataset$age == "pensioner")]<-36
+```
+
+1. d1_sysbp_max - najviši sistolni krvni pritisak pacijenta tokom prva 24 sata, bilo neinvazivno ili invazivno meren
+2. d1_sysbp_min - najniži sistolni krvni pritisak pacijenta tokom prva 24 sata, bilo neinvazivno ili invazivno meren
+
+```{r}
+sum(is.na(dataset$d1_sysbp_max))
+sum(is.na(dataset$d1_sysbp_min))
+```
+
+Vidimo da nam fali 159 za d1_sysbp_min i d1_sysbp_max,što je oko 0.0017% podataka, tako da ćemo primeniti isti princip kao i kod dijastolnog pritiska.
+
+```{r}
+group_bmi_age_sysbp_max <- aggregate(d1_sysbp_max ~ BMI_category + age, data = dataset, FUN = mean, na.rm = TRUE)
+group_bmi_age_sysbp_min <- aggregate(d1_sysbp_min ~ BMI_category + age, data = dataset, FUN = mean, na.rm = TRUE)
+```
+
+1. d1_sysbp_max - penzioneri, odrasli, adolescenti, osobe u srednjim godinama, osobe u pubertetu
+
+```{r}
+#penzioneri
+dataset$d1_sysbp_max[(is.na(dataset$d1_sysbp_max) & dataset$age == "pensioner" & dataset$BMI_category == "underweight")]<-148
+dataset$d1_sysbp_max[(is.na(dataset$d1_sysbp_max) & dataset$age == "pensioner" & dataset$BMI_category == "normal weight")] <-149
+dataset$d1_sysbp_max[(is.na(dataset$d1_sysbp_max) & dataset$age == "pensioner" & dataset$BMI_category == "overweight")] <-150
+dataset$d1_sysbp_max[(is.na(dataset$d1_sysbp_max) & dataset$age == "pensioner" & dataset$BMI_category == "obesity")]<-151
+
+#odrasli 
+
+dataset$d1_sysbp_max[(is.na(dataset$d1_sysbp_max) & dataset$age == "adult" & dataset$BMI_category == "underweight")]<-134
+dataset$d1_sysbp_max[(is.na(dataset$d1_sysbp_max) & dataset$age == "adult" & dataset$BMI_category == "normal weight")] <-138
+dataset$d1_sysbp_max[(is.na(dataset$d1_sysbp_max) & dataset$age == "adult" & dataset$BMI_category == "overweight")] <-142
+dataset$d1_sysbp_max[(is.na(dataset$d1_sysbp_max) & dataset$age == "adult" & dataset$BMI_category == "obesity")]<-147
+
+#adolescenti
+
+dataset$d1_sysbp_max[(is.na(dataset$d1_sysbp_max) & dataset$age == "adolescent" & dataset$BMI_category == "underweight")]<-130
+dataset$d1_sysbp_max[(is.na(dataset$d1_sysbp_max) & dataset$age == "adolescent" & dataset$BMI_category == "normal weight")] <-132
+dataset$d1_sysbp_max[(is.na(dataset$d1_sysbp_max) & dataset$age == "adolescent" & dataset$BMI_category == "overweight")] <-137
+dataset$d1_sysbp_max[(is.na(dataset$d1_sysbp_max) & dataset$age == "adolescent" & dataset$BMI_category == "obesity")]<-141
+
+#osobe u srednjim godinama
+
+dataset$d1_sysbp_max[(is.na(dataset$d1_sysbp_max) & dataset$age == "middle_age" & dataset$BMI_category == "underweight")]<-143
+dataset$d1_sysbp_max[(is.na(dataset$d1_sysbp_max) & dataset$age == "middle_age" & dataset$BMI_category == "normal weight")] <-144
+dataset$d1_sysbp_max[(is.na(dataset$d1_sysbp_max) & dataset$age == "middle_age" & dataset$BMI_category == "overweight")] <-147
+dataset$d1_sysbp_max[(is.na(dataset$d1_sysbp_max) & dataset$age == "middle_age" & dataset$BMI_category == "obesity")]<-150
+
+#osobe u pubertetu
+
+dataset$d1_sysbp_max[(is.na(dataset$d1_sysbp_max) & dataset$age == "puberty" & dataset$BMI_category == "underweight")]<-130
+dataset$d1_sysbp_max[(is.na(dataset$d1_sysbp_max) & dataset$age == "puberty" & dataset$BMI_category == "normal weight")] <-130
+dataset$d1_sysbp_max[(is.na(dataset$d1_sysbp_max) & dataset$age == "puberty" & dataset$BMI_category == "overweight")] <-140
+dataset$d1_sysbp_max[(is.na(dataset$d1_sysbp_max) & dataset$age == "puberty" & dataset$BMI_category == "obesity")]<-143
+```
+
+2. d1_sysbp_min - penzioneri, odrasli, adolescenti, osobe u srednjim godinama, osobe u pubertetu
+
+```{r}
+#penzioneri
+dataset$d1_sysbp_min[(is.na(dataset$d1_sysbp_min) & dataset$age == "pensioner" & dataset$BMI_category == "underweight")]<-92
+dataset$d1_sysbp_min[(is.na(dataset$d1_sysbp_min) & dataset$age == "pensioner" & dataset$BMI_category == "normal weight")] <-95
+dataset$d1_sysbp_min[(is.na(dataset$d1_sysbp_min) & dataset$age == "pensioner" & dataset$BMI_category == "overweight")] <-97
+dataset$d1_sysbp_min[(is.na(dataset$d1_sysbp_min) & dataset$age == "pensioner" & dataset$BMI_category == "obesity")]<-97
+
+#odrasli 
+
+dataset$d1_sysbp_min[(is.na(dataset$d1_sysbp_min) & dataset$age == "adult" & dataset$BMI_category == "underweight")]<-94
+dataset$d1_sysbp_min[(is.na(dataset$d1_sysbp_min) & dataset$age == "adult" & dataset$BMI_category == "normal weight")] <-98
+dataset$d1_sysbp_min[(is.na(dataset$d1_sysbp_min) & dataset$age == "adult" & dataset$BMI_category == "overweight")] <-100
+dataset$d1_sysbp_min[(is.na(dataset$d1_sysbp_min) & dataset$age == "adult" & dataset$BMI_category == "obesity")]<-102
+
+#adolescenti
+
+dataset$d1_sysbp_min[(is.na(dataset$d1_sysbp_min) & dataset$age == "adolescent" & dataset$BMI_category == "underweight")]<-93
+dataset$d1_sysbp_min[(is.na(dataset$d1_sysbp_min) & dataset$age == "adolescent" & dataset$BMI_category == "normal weight")] <-97
+dataset$d1_sysbp_min[(is.na(dataset$d1_sysbp_min) & dataset$age == "adolescent" & dataset$BMI_category == "overweight")] <-99
+dataset$d1_sysbp_min[(is.na(dataset$d1_sysbp_min) & dataset$age == "adolescent" & dataset$BMI_category == "obesity")]<-104
+
+#osobe u srednjim godinama
+
+dataset$d1_sysbp_min[(is.na(dataset$d1_sysbp_min) & dataset$age == "middle_age" & dataset$BMI_category == "underweight")]<-92
+dataset$d1_sysbp_min[(is.na(dataset$d1_sysbp_min) & dataset$age == "middle_age" & dataset$BMI_category == "normal weight")] <-96
+dataset$d1_sysbp_min[(is.na(dataset$d1_sysbp_min) & dataset$age == "middle_age" & dataset$BMI_category == "overweight")] <-98
+dataset$d1_sysbp_min[(is.na(dataset$d1_sysbp_min) & dataset$age == "middle_age" & dataset$BMI_category == "obesity")]<-99
+
+#osobe u pubertetu
+
+dataset$d1_sysbp_min[(is.na(dataset$d1_sysbp_min) & dataset$age == "puberty" & dataset$BMI_category == "underweight")]<-95
+dataset$d1_sysbp_min[(is.na(dataset$d1_sysbp_min) & dataset$age == "puberty" & dataset$BMI_category == "normal weight")] <-96
+dataset$d1_sysbp_min[(is.na(dataset$d1_sysbp_min) & dataset$age == "puberty" & dataset$BMI_category == "overweight")] <-97
+dataset$d1_sysbp_min[(is.na(dataset$d1_sysbp_min) & dataset$age == "puberty" & dataset$BMI_category == "obesity")]<-103
+```
+
+1. d1_mbp_max - najviši srednji krvi pritisak pacijenta tokom prva 24 sata na odeljenju, bilo neinvazivno ili invazivno meren
+2. d1_mbp_min - najniži srednji krvi pritisak pacijenta tokom prva 24 sata na odeljenju, bilo neinvazivno ili invazivno meren
+
+Konačno možemo odrediti i srednji i krvi pritisak pacijenta tokom prva 24 sata na odeljenju. Dobija se po sledećoj formuli:
+map = dbp + (sbp-dbp)/3. 
+Ovu formulu ćemo primeniti za sve vrednosti, za slučaj da neke vrednosti nisu bile dobro izračunate.
+
+```{r}
+dataset$d1_mbp_max <- dataset$d1_diasbp_max+(dataset$d1_sysbp_max-dataset$d1_diasbp_max)/3
+dataset$d1_mbp_min <- dataset$d1_diasbp_min+(dataset$d1_sysbp_min-dataset$d1_diasbp_min)/3
+```
+
+Sada je vreme da sredimo ove feture za period od 1h. Način na koji ćemo to da uradimo se neće razlikovati od načina na koji smo to uradili za period od 24h.
+
+1. h1_diasbp_max - najviši dijastolni krvni pritisak pacijenta tokom prva 24 sata, bilo neinvazivno ili invazivno meren
+2. h1_diasbp_min - najniži dijastolni krvni pritisak pacijenta tokom prva 24 sata, bilo neinvazivno ili invazivno meren
+
+```{r}
+sum(is.na(dataset$h1_diasbp_max))
+sum(is.na(dataset$h1_diasbp_min))
+```
+
+Vidimo da ima 3619 nedostajućih vrednosti za h1_diasbp_max i h1_diasbp_min. Na krvni pritisak, kao što smo ranije zaključili, najviše utiče starost pacijenta i bmi. Sada možemo da koristimo varijablu koju smo već kreirali - BMI_category.
+Nema potrebe ponovo komentarisati sve korake, jer će proces sređivanja biti identičan kao prethodni za podatke merene toku 24h.
+
+```{r}
+group_bmi_age_diasbp_max_h1 <- aggregate(h1_diasbp_max ~ BMI_category + age, data = dataset, FUN = mean, na.rm = TRUE)
+```
+
+1. h1_diasbp_max - penzioneri, adolescenti, odrasle osobe, osobe u srednjim godinama i osobe u pubertetu.
+
+```{r}
+#penzioneri
+dataset$h1_diasbp_max[(is.na(dataset$h1_diasbp_max) & dataset$age == "pensioner" & dataset$BMI_category == "underweight")]<-86
+dataset$h1_diasbp_max[(is.na(dataset$h1_diasbp_max) & dataset$age == "pensioner" & dataset$BMI_category == "normal weight")] <-87
+dataset$h1_diasbp_max[(is.na(dataset$h1_diasbp_max) & dataset$age == "pensioner" & dataset$BMI_category == "overweight")] <-87
+dataset$h1_diasbp_max[(is.na(dataset$h1_diasbp_max) & dataset$age == "pensioner" & dataset$BMI_category == "obesity")]<-88
+
+#odrasli
+dataset$h1_diasbp_max[(is.na(dataset$h1_diasbp_max) & dataset$age == "adult" & dataset$BMI_category == "underweight")]<-88
+dataset$h1_diasbp_max[(is.na(dataset$h1_diasbp_max) & dataset$age == "adult" & dataset$BMI_category == "normal weight")] <-88
+dataset$h1_diasbp_max[(is.na(dataset$h1_diasbp_max) & dataset$age == "adult" & dataset$BMI_category == "overweight")] <-90
+dataset$h1_diasbp_max[(is.na(dataset$h1_diasbp_max) & dataset$age == "adult" & dataset$BMI_category == "obesity")]<-92
+
+#adolescenti
+dataset$h1_diasbp_max[(is.na(dataset$h1_diasbp_max) & dataset$age == "adolescent" & dataset$BMI_category == "underweight")]<-82
+dataset$h1_diasbp_max[(is.na(dataset$h1_diasbp_max) & dataset$age == "adolescent" & dataset$BMI_category == "normal weight")] <-83
+dataset$h1_diasbp_max[(is.na(dataset$h1_diasbp_max) & dataset$age == "adolescent" & dataset$BMI_category == "overweight")] <-85
+dataset$h1_diasbp_max[(is.na(dataset$h1_diasbp_max) & dataset$age == "adolescent" & dataset$BMI_category == "obesity")]<-87
+
+#osobe u srednjim godinama
+dataset$h1_diasbp_max[(is.na(dataset$h1_diasbp_max) & dataset$age == "middle_age" & dataset$BMI_category == "underweight")]<-90
+dataset$h1_diasbp_max[(is.na(dataset$h1_diasbp_max) & dataset$age == "middle_age" & dataset$BMI_category == "normal weight")] <-90
+dataset$h1_diasbp_max[(is.na(dataset$h1_diasbp_max) & dataset$age == "middle_age" & dataset$BMI_category == "overweight")] <-91
+dataset$h1_diasbp_max[(is.na(dataset$h1_diasbp_max) & dataset$age == "middle_age" & dataset$BMI_category == "obesity")]<-92
+
+#osobe u pubertetu
+dataset$h1_diasbp_max[(is.na(dataset$h1_diasbp_max) & dataset$age == "puberty" & dataset$BMI_category == "underweight")]<-80
+dataset$h1_diasbp_max[(is.na(dataset$h1_diasbp_max) & dataset$age == "puberty" & dataset$BMI_category == "normal weight")] <-82
+dataset$h1_diasbp_max[(is.na(dataset$h1_diasbp_max) & dataset$age == "puberty" & dataset$BMI_category == "overweight")] <-86
+dataset$h1_diasbp_max[(is.na(dataset$h1_diasbp_max) & dataset$age == "puberty" & dataset$BMI_category == "obesity")]<-85
+```
+
+2. h1_diasbp_min - penzioneri, adolescenti, odrasle osobe, osobe u srednjim godinama i osobe u pubertetu.
+
+```{r}
+#penzioneri
+dataset$h1_diasbp_min[(is.na(dataset$h1_diasbp_min) & dataset$age == "pensioner" & dataset$BMI_category == "underweight")]<-47
+dataset$h1_diasbp_min[(is.na(dataset$h1_diasbp_min) & dataset$age == "pensioner" & dataset$BMI_category == "normal weight")] <-48
+dataset$h1_diasbp_min[(is.na(dataset$h1_diasbp_min) & dataset$age == "pensioner" & dataset$BMI_category == "overweight")] <-48
+dataset$h1_diasbp_min[(is.na(dataset$h1_diasbp_min) & dataset$age == "pensioner" & dataset$BMI_category == "obesity")]<-48
+
+#odrasli
+dataset$h1_diasbp_min[(is.na(dataset$h1_diasbp_min) & dataset$age == "adult" & dataset$BMI_category == "underweight")]<-53
+dataset$h1_diasbp_min[(is.na(dataset$h1_diasbp_min) & dataset$age == "adult" & dataset$BMI_category == "normal weight")] <-54
+dataset$h1_diasbp_min[(is.na(dataset$h1_diasbp_min) & dataset$age == "adult" & dataset$BMI_category == "overweight")] <-55
+dataset$h1_diasbp_min[(is.na(dataset$h1_diasbp_min) & dataset$age == "adult" & dataset$BMI_category == "obesity")]<-55
+
+#adolescenti
+dataset$h1_diasbp_min[(is.na(dataset$h1_diasbp_min) & dataset$age == "adolescent" & dataset$BMI_category == "underweight")]<-49
+dataset$h1_diasbp_min[(is.na(dataset$h1_diasbp_min) & dataset$age == "adolescent" & dataset$BMI_category == "normal weight")] <-50
+dataset$h1_diasbp_min[(is.na(dataset$h1_diasbp_min) & dataset$age == "adolescent" & dataset$BMI_category == "overweight")] <-49
+dataset$h1_diasbp_min[(is.na(dataset$h1_diasbp_min) & dataset$age == "adolescent" & dataset$BMI_category == "obesity")]<-52
+
+#osobe u srednjim godinama
+dataset$h1_diasbp_min[(is.na(dataset$h1_diasbp_min) & dataset$age == "middle_age" & dataset$BMI_category == "underweight")]<-54
+dataset$h1_diasbp_min[(is.na(dataset$h1_diasbp_min) & dataset$age == "middle_age" & dataset$BMI_category == "normal weight")] <-54
+dataset$h1_diasbp_min[(is.na(dataset$h1_diasbp_min) & dataset$age == "middle_age" & dataset$BMI_category == "overweight")] <-55
+dataset$h1_diasbp_min[(is.na(dataset$h1_diasbp_min) & dataset$age == "middle_age" & dataset$BMI_category == "obesity")]<-53
+
+#osobe u pubertetu
+dataset$h1_diasbp_min[(is.na(dataset$h1_diasbp_min) & dataset$age == "puberty" & dataset$BMI_category == "underweight")]<-48
+dataset$h1_diasbp_min[(is.na(dataset$h1_diasbp_min) & dataset$age == "puberty" & dataset$BMI_category == "normal weight")] <-48
+dataset$h1_diasbp_min[(is.na(dataset$h1_diasbp_min) & dataset$age == "puberty" & dataset$BMI_category == "overweight")] <-47
+dataset$h1_diasbp_min[(is.na(dataset$h1_diasbp_min) & dataset$age == "puberty" & dataset$BMI_category == "obesity")]<-52
+```
+
+1. h1_heartrate_max - najveći broj otkucaja srca pacijenta tokom prvo sata boravka na odeljenju
+2. h1_heartrate_min - najmanji broj otkucaja srca pacijenta tokom prvo sata boravka na odeljenju
+
+```{r}
+sum(is.na(dataset$h1_heartrate_max))
+sum(is.na(dataset$h1_heartrate_min))
+```
+
+Imamo 2790 nedostajućih vrednosti za *h1_heartrate_min* i *h1_heartrate_max*.
+
+```{r}
+group_age_heartrate_max_h1 <- aggregate(h1_heartrate_max ~ age, data = dataset, FUN = mean,na.rm = TRUE)
+group_age_heartrate_min_h1 <- aggregate(h1_heartrate_min ~ age, data = dataset, FUN = mean,na.rm = TRUE)
+```
+
+```{r}
+#h1_heartrate_max
+dataset$h1_heartrate_max[(is.na(dataset$h1_heartrate_max) & dataset$age == "puberty")]<-113
+dataset$h1_heartrate_max[(is.na(dataset$h1_heartrate_max) & dataset$age == "middle_age")] <-104
+dataset$h1_heartrate_max[(is.na(dataset$h1_heartrate_max) & dataset$age == "adolescent")] <-113
+dataset$h1_heartrate_max[(is.na(dataset$h1_heartrate_max) & dataset$age == "adult")]<-110
+dataset$h1_heartrate_max[(is.na(dataset$h1_heartrate_max) & dataset$age == "pensioner")]<-101
+
+#h1_heartrate_min
+dataset$h1_heartrate_min[(is.na(dataset$h1_heartrate_min) & dataset$age == "puberty")]<-75
+dataset$h1_heartrate_min[(is.na(dataset$h1_heartrate_min) & dataset$age == "middle_age")]<-72
+dataset$h1_heartrate_min[(is.na(dataset$h1_heartrate_min) & dataset$age == "adolescent")] <-75
+dataset$h1_heartrate_min[(is.na(dataset$h1_heartrate_min) & dataset$age == "adult")]<-75
+dataset$h1_heartrate_min[(is.na(dataset$h1_heartrate_min) & dataset$age == "pensioner")]<-69
+```
+
+1. h1_resprate_max - najveća brzina disanja pacijenta tokom prvog sata boravka na odeljenju 
+2. h1_resprate_min - najniža brzina disanja pacijenta tokom prvog sata boravka na odeljenju
+
+```{r}
+sum(is.na(dataset$h1_resprate_max))
+sum(is.na(dataset$h1_resprate_min))
+```
+
+Imamo 4357 nedostajućih vrednosti za h1_resprate_min i h1_resprate_max.
+
+```{r}
+group_age_respirate_max_h1 <- aggregate(h1_resprate_max ~ age, data = dataset, FUN = mean,na.rm = TRUE)
+group_age_respirate_min_h1 <- aggregate(h1_resprate_min ~ age, data = dataset, FUN = mean,na.rm = TRUE)
+```
+
+```{r}
+#h1_resprate_max
+dataset$h1_resprate_max[(is.na(dataset$h1_resprate_max) & dataset$age == "puberty")]<-27
+dataset$h1_resprate_max[(is.na(dataset$h1_resprate_max) & dataset$age == "middle_age")]<-29
+dataset$h1_resprate_max[(is.na(dataset$h1_resprate_max) & dataset$age == "adolescent")] <-28
+dataset$h1_resprate_max[(is.na(dataset$h1_resprate_max) & dataset$age == "adult")]<-29
+dataset$h1_resprate_max[(is.na(dataset$h1_resprate_max) & dataset$age == "pensioner")]<-29
+
+#h1_resprate_min
+dataset$h1_resprate_min[(is.na(dataset$h1_resprate_min) & dataset$age == "puberty")]<-13
+dataset$h1_resprate_min[(is.na(dataset$h1_resprate_min) & dataset$age == "middle_age")]<-12
+dataset$h1_resprate_min[(is.na(dataset$h1_resprate_min) & dataset$age == "adolescent")] <-13
+dataset$h1_resprate_min[(is.na(dataset$h1_resprate_min) & dataset$age == "adult")]<-13
+dataset$h1_resprate_min[(is.na(dataset$h1_resprate_min) & dataset$age == "pensioner")]<-13
+```
+
+1. h1_spo2_max - najveća saturacija kiseonikom tokom prvog sata boravka u jedinici
+2. h1_spo2_min - najmanja saturacija kiseonikom tokom prvog sata boravka u jedinici
+
+```{r}
+sum(is.na(dataset$h1_spo2_max))
+sum(is.na(dataset$h1_spo2_min))
+```
+
+Imamo 4185 nedostajućih vrednosti za h1_spo2_min i h1_spo2_max.
+
+```{r}
+group_age_spo2_max_h1 <- aggregate(h1_spo2_max ~ age, data = dataset, FUN = mean,na.rm = TRUE)
+group_age_spo2_min_h1 <- aggregate(h1_spo2_min ~ age, data = dataset, FUN = mean,na.rm = TRUE)
+```
+
+```{r}
+#h1_spo2_max
+dataset$h1_spo2_max[(is.na(dataset$h1_spo2_max) & dataset$age == "puberty")]<-100
+dataset$h1_spo2_max[(is.na(dataset$h1_spo2_max) & dataset$age == "middle_age")]<-99
+dataset$h1_spo2_max[(is.na(dataset$h1_spo2_max) & dataset$age == "adolescent")] <-100
+dataset$h1_spo2_max[(is.na(dataset$h1_spo2_max) & dataset$age == "adult")]<-99
+dataset$h1_spo2_max[(is.na(dataset$h1_spo2_max) & dataset$age == "pensioner")]<-99
+
+#h1_spo2_min
+dataset$h1_spo2_min[(is.na(dataset$h1_spo2_min) & dataset$age == "puberty")]<-93
+dataset$h1_spo2_min[(is.na(dataset$h1_spo2_min) & dataset$age == "middle_age")]<-91
+dataset$h1_spo2_min[(is.na(dataset$h1_spo2_min) & dataset$age == "adolescent")] <-93
+dataset$h1_spo2_min[(is.na(dataset$h1_spo2_min) & dataset$age == "adult")]<-92
+dataset$h1_spo2_min[(is.na(dataset$h1_spo2_min) & dataset$age == "pensioner")]<-90
+```
+
+1. h1_sysbp_max - najviši sistolni pritisak pacijenta tokom prvog sata borvaka na odeljenju, bilo neinvazivno ili invazivno meren
+2. h1_sysbp_min - najniži sistolni pritisak pacijenta tokom prvog sata borvaka na odeljenju, bilo neinvazivno ili invazivno meren
+
+```{r}
+sum(is.na(dataset$h1_sysbp_max))
+sum(is.na(dataset$h1_sysbp_min))
+```
+
+Imamo 3611 nedostajućih vrednosti za h1_sysbp_min i 5477 h1_sysbp_max.
+
+```{r}
+group_bmi_age_sysbp_max_h1 <- aggregate(h1_sysbp_max ~ BMI_category + age, data = dataset, FUN = mean, na.rm = TRUE)
+```
+
+1. h1_sysbp_max - penzioneri, odrasli, adolescenti, osobe u srednjim godinama, osobe u pubertetu.
+
+```{r}
+#penzioneri
+dataset$h1_sysbp_max[(is.na(dataset$h1_sysbp_max) & dataset$age == "pensioner" & dataset$BMI_category == "underweight")]<-148
+dataset$h1_sysbp_max[(is.na(dataset$h1_sysbp_max) & dataset$age == "pensioner" & dataset$BMI_category == "normal weight")] <-149
+dataset$h1_sysbp_max[(is.na(dataset$h1_sysbp_max) & dataset$age == "pensioner" & dataset$BMI_category == "overweight")] <-150
+dataset$h1_sysbp_max[(is.na(dataset$h1_sysbp_max) & dataset$age == "pensioner" & dataset$BMI_category == "obesity")]<-151
+
+#odrasli
+dataset$h1_sysbp_max[(is.na(dataset$h1_sysbp_max) & dataset$age == "adult" & dataset$BMI_category == "underweight")]<-134
+dataset$h1_sysbp_max[(is.na(dataset$h1_sysbp_max) & dataset$age == "adult" & dataset$BMI_category == "normal weight")] <-138
+dataset$h1_sysbp_max[(is.na(dataset$h1_sysbp_max) & dataset$age == "adult" & dataset$BMI_category == "overweight")] <-142
+dataset$h1_sysbp_max[(is.na(dataset$h1_sysbp_max) & dataset$age == "adult" & dataset$BMI_category == "obesity")]<-147
+
+#adolescenti
+
+dataset$h1_sysbp_max[(is.na(dataset$h1_sysbp_max) & dataset$age == "adolescent" & dataset$BMI_category == "underweight")]<-130
+dataset$h1_sysbp_max[(is.na(dataset$h1_sysbp_max) & dataset$age == "adolescent" & dataset$BMI_category == "normal weight")] <-132
+dataset$h1_sysbp_max[(is.na(dataset$h1_sysbp_max) & dataset$age == "adolescent" & dataset$BMI_category == "overweight")] <-137
+dataset$h1_sysbp_max[(is.na(dataset$h1_sysbp_max) & dataset$age == "adolescent" & dataset$BMI_category == "obesity")]<-141
+
+
+#osobe u srednjim godinama.
+
+dataset$h1_sysbp_max[(is.na(dataset$h1_sysbp_max) & dataset$age == "middle_age" & dataset$BMI_category == "underweight")]<-143
+dataset$h1_sysbp_max[(is.na(dataset$h1_sysbp_max) & dataset$age == "middle_age" & dataset$BMI_category == "normal weight")] <-144
+dataset$h1_sysbp_max[(is.na(dataset$h1_sysbp_max) & dataset$age == "middle_age" & dataset$BMI_category == "overweight")] <-147
+dataset$h1_sysbp_max[(is.na(dataset$h1_sysbp_max) & dataset$age == "middle_age" & dataset$BMI_category == "obesity")]<-150
+
+#osobe u pubertetu.
+
+dataset$h1_sysbp_max[(is.na(dataset$h1_sysbp_max) & dataset$age == "puberty" & dataset$BMI_category == "underweight")]<-130
+dataset$h1_sysbp_max[(is.na(dataset$h1_sysbp_max) & dataset$age == "puberty" & dataset$BMI_category == "normal weight")] <-130
+dataset$h1_sysbp_max[(is.na(dataset$h1_sysbp_max) & dataset$age == "puberty" & dataset$BMI_category == "overweight")] <-140
+dataset$h1_sysbp_max[(is.na(dataset$h1_sysbp_max) & dataset$age == "puberty" & dataset$BMI_category == "obesity")]<-143
+```
+
+2. h1_sysbp_min - penzioneri, odrasli, adolescenti, osobe u srednjim godinama, osobe u pubertetu.
+
+```{r}
+group_bmi_age_sysbp_min_h1 <- aggregate(h1_sysbp_min ~ BMI_category + age, data = dataset, FUN = mean, na.rm = TRUE)
+```
+
+```{r}
+#penzioneri
+dataset$h1_sysbp_min[(is.na(dataset$h1_sysbp_min) & dataset$age == "pensioner" & dataset$BMI_category == "underweight")]<-92
+dataset$h1_sysbp_min[(is.na(dataset$h1_sysbp_min) & dataset$age == "pensioner" & dataset$BMI_category == "normal weight")] <-95
+dataset$h1_sysbp_min[(is.na(dataset$h1_sysbp_min) & dataset$age == "pensioner" & dataset$BMI_category == "overweight")] <-97
+dataset$h1_sysbp_min[(is.na(dataset$h1_sysbp_min) & dataset$age == "pensioner" & dataset$BMI_category == "obesity")]<-97
+
+#odrasli 
+
+dataset$h1_sysbp_min[(is.na(dataset$h1_sysbp_min) & dataset$age == "adult" & dataset$BMI_category == "underweight")]<-94
+dataset$h1_sysbp_min[(is.na(dataset$h1_sysbp_min) & dataset$age == "adult" & dataset$BMI_category == "normal weight")] <-98
+dataset$h1_sysbp_min[(is.na(dataset$h1_sysbp_min) & dataset$age == "adult" & dataset$BMI_category == "overweight")] <-100
+dataset$h1_sysbp_min[(is.na(dataset$h1_sysbp_min) & dataset$age == "adult" & dataset$BMI_category == "obesity")]<-102
+
+#adolescenti
+
+dataset$h1_sysbp_min[(is.na(dataset$h1_sysbp_min) & dataset$age == "adolescent" & dataset$BMI_category == "underweight")]<-93
+dataset$h1_sysbp_min[(is.na(dataset$h1_sysbp_min) & dataset$age == "adolescent" & dataset$BMI_category == "normal weight")] <-97
+dataset$h1_sysbp_min[(is.na(dataset$h1_sysbp_min) & dataset$age == "adolescent" & dataset$BMI_category == "overweight")] <-99
+dataset$h1_sysbp_min[(is.na(dataset$h1_sysbp_min) & dataset$age == "adolescent" & dataset$BMI_category == "obesity")]<-104
+
+#osobe u srednjim godinama
+
+dataset$h1_sysbp_min[(is.na(dataset$h1_sysbp_min) & dataset$age == "middle_age" & dataset$BMI_category == "underweight")]<-92
+dataset$h1_sysbp_min[(is.na(dataset$h1_sysbp_min) & dataset$age == "middle_age" & dataset$BMI_category == "normal weight")] <-96
+dataset$h1_sysbp_min[(is.na(dataset$h1_sysbp_min) & dataset$age == "middle_age" & dataset$BMI_category == "overweight")] <-98
+dataset$h1_sysbp_min[(is.na(dataset$h1_sysbp_min) & dataset$age == "middle_age" & dataset$BMI_category == "obesity")]<-99
+
+#osobe u pubertetu
+
+dataset$h1_sysbp_min[(is.na(dataset$h1_sysbp_min) & dataset$age == "puberty" & dataset$BMI_category == "underweight")]<-95
+dataset$h1_sysbp_min[(is.na(dataset$h1_sysbp_min) & dataset$age == "puberty" & dataset$BMI_category == "normal weight")] <-96
+dataset$h1_sysbp_min[(is.na(dataset$h1_sysbp_min) & dataset$age == "puberty" & dataset$BMI_category == "overweight")] <-97
+dataset$h1_sysbp_min[(is.na(dataset$h1_sysbp_min) & dataset$age == "puberty" & dataset$BMI_category == "obesity")]<-103
+```
+
+1. h1_mbp_max - najviši srednji krvni pritisak pacijenta tokom prvog sata boravka na odeljenju, bilo neinvazivno ili invazivno meren
+2. h1_mbp_min - najniži srednji krvni pritisak pacijenta tokom prvog sata boravka na odeljenju, bilo neinvazivno ili invazivno meren
+
+Takođe ćemo formulu primeniti na sve vrednosti, u slučaju da ima grešaka prilikom računa.
+
+```{r}
+dataset$h1_mbp_max <- dataset$h1_diasbp_max + (dataset$h1_sysbp_max - dataset$h1_diasbp_max) / 3
+dataset$h1_mbp_min <- dataset$h1_diasbp_min + (dataset$h1_sysbp_min - dataset$h1_diasbp_min) / 3
+```
+
+1. aids - da li pacijent ima konačnu dijagnozu sindroma stečene imunodeficijencije(AIDS)(ne samo HIV pozitivan)
+2. cirrhosis - bilo da pacijent ima istoriju teške upotrebe alkohola sa portonom hipertenzijom i varikozitetima, drugim uzorcima ciroze sa dokazima portne hipertenzije i varikoziteta ili cirozom dokazanom biopsijom. Ovaj komorbiditet se ne osnosi na pacijente sa funkcionalnom transplatacijom jetre 
+3. hepatic_failure - da li pacjient ima cirozu i dodatne komplikacije uključujući žuticu i ascites, krvarenje u gornjem delu gastroinfestilnog trakta, hepatičnu encefalopatiju ili komu
+4. immunosuppression - da li je imuni sistem pacijenta ugrožen u preiodu od 6 meseci pre prijema na intezivnu negu iz bilo kog od sledećih razloga: terapija zračenjem, hemoterapija, upotreba necitotoksičnih imunosupresivnih lekova, visoke doze steroida (najmanje 0,3 mg/kg/dan metilprednizolona ili ekvivalent najmanje 6 meseci)
+5. leukemia - da li je pacijentu dijagnostikovana akutna ili hronična mijelogena leukemija, akutna ili hronična limfocitna leukemija ili multipli mijelom
+6. lymphoma - da li je pacijentu dijagnostikovan ne-Hodgkin limfom
+7. solid_tumor_with_metastasis - da li je pacijentu dijagnostikovan bilo koji karcinom solidnog tumora (uključujući maligni melanom) koji ima dokaze o metastazama
+8. diabetes_mellitus - da li je pacijentu dijagnostikovan dijabetes, bilo juvenilni ili adultni, koji zahteva lekove
+
+Kada su u pitanju ovi prediktori, njihovi podaci se dobijaju određenim testovima, i našim istraživanjem smo zaključili da oni ne mogu da se prediktuju. Tako da ćemo pretpostaviti da podaci nedostaju u slučaju da nije bilo sumnje za testiranjem (tačnije pretpostavlja se da nema ovih oboljenja) i da su rezultati testa negativni (tačnije da se nisu uneli negatvni rezultati u tabelu).
+
+```{r}
+#aids
+dataset$aids[is.na(dataset$aids)] <- 0
+
+#cirrhosis
+dataset$cirrhosis[is.na(dataset$cirrhosis)] <- 0
+
+#hepatic_failure
+dataset$hepatic_failure[is.na(dataset$hepatic_failure)] <- 0
+
+#immunosuppression
+dataset$immunosuppression[is.na(dataset$immunosuppression)] <- 0
+
+#leukemia
+dataset$leukemia[is.na(dataset$leukemia)] <- 0
+
+#lymphoma
+dataset$lymphoma[is.na(dataset$lymphoma)] <- 0
+
+#solid_tumor_with_metastasis
+dataset$solid_tumor_with_metastasis[is.na(dataset$solid_tumor_with_metastasis)] <- 0
+
+#diabetes_mellitus
+dataset$diabetes_mellitus[is.na(dataset$diabetes_mellitus)] <- 0
+```
+
+1. apache_2_diagnosis - APACHE II dijagnoza za prijem na intezivnu negu
+
+Jasno nam je da vrednosti ove promenljive predstavlja kod koji se koristi za kategorizaciju bolesti sa kojom je pacijent primljen. Međutim, pošto dataset nije dosao ni sa kakvom dokumentacijom, ostaje na nama da zaključimo šta koji kod predstavlja. 
+Hajde da prvo vidimo sve različite vrednosti sa njom povezane *apache_2_bodysystem* promenljive.
+
+```{r}
+na_counts <- dataset %>%
+  summarise_all(~ sum(is.na(.)))
+
+unique_body_systems <- unique(dataset$apache_2_bodysystem)
+print(unique_body_systems)
+```
+
+Vidimo da postoji 10 jedinstvenih vrednosti, međutim jedna se ponavlja (razlika je u velikom i malom slovu, značenje je isto). Hajde da to ispravimo:
+
+```{r}
+dataset$apache_2_bodysystem[dataset$apache_2_bodysystem == "Undefined diagnoses"] <- "Undefined Diagnoses"
+
+unique_bodysystem_values <- unique(dataset$apache_2_bodysystem)
+unique_bodysystem_values
+```
+
+Vidimo da je 113 najčešća vrednost kategorijske promenljive *apache_2_diagnosis*, ali se javlja u svega 13% slučajeva. Iz tog razloga je nećemo iskoriti za popunjavanje NA vrednosti ove kolone (spoiler alert-jos uvek). Umesto toga, probaćemo da vrednosti ove kolone tačnije odredimo pomoću *apache_2_bodysystem* promenljive. Pronaćićemo najzastupljeniju vrstu bolesti. U ovom slucaju to je Cardiovascular, sa 44.14%.
+
+```{r}
+mode_value_diagnosis <- as.numeric(names(sort(table(dataset$apache_2_diagnosis), decreasing = TRUE)[1]))
+mode_value_diagnosis
+percentage_table <- prop.table(table(dataset$apache_2_diagnosis)) * 100
+percentage_table
+
+any(is.na(dataset$apache_2_bodysystem))
+
+percentage_table <- prop.table(table(dataset$apache_2_bodysystem)) * 100
+percentage_table
+```
+
+Sada prelazimo na enkodiranje. Mapiramo svaku od različitih vrednosti ove kolone radi olakšanog daljnjeg rada. Enkodirane vrednosti pamtimo u novoj koloni *encoded_apache_2_bodysystem*.
+
+```{r}
+encoding_map <- c(
+  "Cardiovascular" = 1,
+  "Respiratory" = 2,
+  "Metabolic" = 3,
+  "Trauma" = 4,
+  "Neurologic" = 5,
+  "Gastrointestinal" = 6,
+  "Renal/Genitourinary" = 7,
+  "Haematologic" = 8,
+  "Undefined Diagnoses" = 9
+)
+
+dataset$encoded_apache_2_bodysystem <- encoding_map[dataset$apache_2_bodysystem]
+#dataset$encoded_apache_2_bodysystem
+```
+
+Hajde da pokušamo da nađemo povezanost između ove 2 promenljive. Nema smisla raditi korelaciju, pa ćemo probati malo drugačiji pristup. Uporedićemo svaku vrednost prve sa svakom vrednošću druge promenljive, i da izračunamo procenat slučajeva u kojima se 2 ista para pojavljuju. Ignorisaćemo NA vrednosti kolone *apache_2_diagnosis*, jer njih nema smisla uporedjivati.
+
+```{r}
+result_list <- list()
+for (diagnosis_value in unique(dataset$apache_2_diagnosis)) {
+  non_na_diagnosis_df <- dataset[!is.na(dataset$apache_2_diagnosis), ]
+  subset_df <- non_na_diagnosis_df[non_na_diagnosis_df$apache_2_diagnosis == diagnosis_value, ]
+  percentage_results <- list()
+  
+  for (target_bodysystem in unique(dataset$encoded_apache_2_bodysystem)) {
+    matching_rows <- subset_df$encoded_apache_2_bodysystem == target_bodysystem
+    percentage_matching <- sum(matching_rows) / nrow(subset_df) * 100
+    percentage_results[[as.character(target_bodysystem)]] <- percentage_matching
+  }
+  result_list[[as.character(diagnosis_value)]] <- percentage_results
+}
+#print(result_list)
+```
+
+Dolazimo do zanimljivog zaključka:
+
+* Vrednost 113 odgovara vrednosti 1 (100%).
+
+* Vrednost 114 odgovara vrednosti 1 (100%).
+
+* Vrednost 108 odgovara vrednosti 2 (100%).
+
+* Vrednost 122 odgovara vrednosti 3 (100%).
+
+* Vrednost 203 odgovara vrednosti 1 (100%).
+
+* Vrednost 119 odgovara vrednosti 4 (100%).
+
+* Vrednost 301 odgovara vrednosti 5 (100%).
+
+* Vrednost 116 odgovara vrednosti 1 (100%).
+
+* Vrednost 112 odgovara vrednosti 1 (100%).
+
+* Vrednost 303 odgovara vrednosti 2 (100%).
+
+* Vrednost 102 odgovara vrednosti 2 (100%).
+
+* Vrednost 217 odgovara vrednosti 5 (100%).
+
+* Vrednost 218 odgovara vrednosti 5 (100%).
+
+* Vrednost 304 odgovara vrednosti 6 (100%).
+
+* Vrednost 302 odgovara vrednosti 1 (100%).
+
+* Vrednost 305 odgovara vrednosti 7 (100%).
+
+* Vrednost 124 odgovara vrednosti 6 (100%).
+
+* Vrednost 202 odgovara vrednosti 1 (100%).
+
+* Vrednost 207 odgovara vrednosti 4 (100%).
+
+* Vrednost 110 odgovara vrednosti 1 (100%).
+
+* Vrednost 209 odgovara vrednosti 2 (100%).
+
+* Vrednost 109 odgovara vrednosti 1 (100%).
+
+* Vrednost 106 odgovara vrednosti 2 (100%).
+
+* Vrednost 117 odgovara vrednosti 1 (100%).
+
+* Vrednost 120 odgovara vrednosti 5 (100%).
+
+* Vrednost 308 odgovara vrednosti 9 (100%).
+
+* Vrednost 105 odgovara vrednosti 2 (100%).
+
+* Vrednost 212 odgovara vrednosti 6 (100%).
+
+* Vrednost 219 odgovara vrednosti 5 (100%).
+
+* Vrednost 306 odgovara vrednosti 3 (100%).
+
+* Vrednost 121 odgovara vrednosti 5 (100%).
+
+* Vrednost 214 odgovara vrednosti 6 (100%).
+
+* Vrednost 123 odgovara vrednosti 3 (100%).
+
+* Vrednost 213 odgovara vrednosti 6 (100%).
+
+* Vrednost 208 odgovara vrednosti 4 (100%).
+
+* Vrednost 101 odgovara vrednosti 2 (100%).
+
+* Vrednost 118 odgovara vrednosti 4 (100%).
+
+* Vrednost 307 odgovara vrednosti 3 (100%).
+
+* Vrednost 215 odgovara vrednosti 7 (100%).
+
+* Vrednost 103 odgovara vrednosti 2 (100%).
+
+* Vrednost 115 odgovara vrednosti 1 (100%).
+
+* Vrednost 104 odgovara vrednosti 2 (100%).
+
+* Vrednost 216 odgovara vrednosti 7 (100%).
+
+* Vrednost 107 odgovara vrednosti 2 (100%).
+
+
+* Vrednosti 113, 114, 203, 116, 112, 302, 202, 110, 109, 117, 115 uvek odgovaraju vrednosti 1.
+
+* Vrednosti 108, 303, 102, 209, 106, 105, 101, 103, 104, 107 uvek odgovaraju vrednosti 2.
+
+* Vrednosti 122, 306, 123, 307 uvek odgovaraju vrednosti 3.
+
+* Vrednosti 119, 207, 208, 118 uvek odgovaraju vrednosti 4.
+
+* Vrednosti 301, 217, 218, 120, 219, 121 uvek odgovaraju vrednosti 5.
+
+* Vrednosti 304, 124, 212, 214, 213 uvek odgovaraju vrednosti 6.
+
+* Vrednosti 305, 215, 216 uvek odgovaraju vrednosti 7.
+
+* Vrednosti 306 uvek odgovara vrednosti 8.
+
+* Vrednosti 308 uvek odgovara vrednosti 9.
+
+Vidimo da smo pokrili sve vrednosti.
+
+*Zaključak?*
+Svaki kod x uvek odgovara tipu bolesti y.
+
+*Šta možemo uraditi sa tom činjenicom?* 
+Možemo odrediti koja grupa kodove je najčešće zastupljena u datasetu, a zatim odrediti koji kod iz te grupe se pojavljuje najviše puta. To će biti kod kojim ćemo popuniti NA vrednosti promenljive *apache_2_diagnosis*.
+
+Budući da su bolesti koje pripadaju grupi kardiovaskularnih najčešće zastupljene, a dijagnoza sa kodom 113 (najčešće zastupljena dijagnoza u datasetu) njoj i pripada, na kraju ćemo ipak iskoristiti njen kod kako bi popunili nedostajuće vrednosti ove kolone. 
+
+```{r}
+unique_num<- unique(dataset$apache_2_diagnosis)
+print(unique_num)
+
+dataset$apache_2_diagnosis[is.na(dataset$apache_2_diagnosis)] <- mode_value_diagnosis
+#dataset$apache_2_diagnosis
+
+any(is.na(dataset$apache_2_diagnosis))
+any(is.na(dataset$apache_3j_bodysystem))
+```
+
+1. apache_3j_diagnosis - šifra poddijagnoze APACHE III-J koja najbolje opisuje razlog prijema na intezivnu negu
+
+Vidimo da je sepsa grupa bolesti koja odgovara najčešćem kodu, i to u 100% slučajeva (ne postoji drugi kod iz dataseta koji odgovara "Sepsis" vrsti). Budući da nam treba kod koji se najčešće pojavljuje iz grupe kardiovaskularnih bolesti, pronaći cemo ga i njime popuniti NA vrednosti *apache_3j_diagnosis* kolone. 
+
+```{r}
+most_common_value<-names(which.max(table(dataset$apache_3j_diagnosis[dataset$apache_3j_bodysystem == "Cardiovascular"])))
+most_common_value
+
+dataset$apache_3j_diagnosis[is.na(dataset$apache_3j_diagnosis)] <- most_common_value
+#dataset$apache_3j_diagnosis
+any(is.na(dataset$apache_3j_diagnosis))
+```
+
+1. arf_apache - da li je pacijent imao akutnu bubrežnu insuficijenciju tokom prva 24 sata boravka u odeljenju, definisano kao 24-časovno izlučivanje urina <410ml, kreatinin >=133mikromol/L i bez hronične dijalize
+
+Budući da je cak 97.2% vrednosti 0, ostale NA vrednosti ćemo popuniti nulom.
+
+```{r}
+any(is.na(dataset$arf_apache))
+prop.table(table(dataset$arf_apache)) * 100
+
+dataset$arf_apache[is.na(dataset$arf_apache)]<-0
+any(is.na(dataset$arf_apache))
+```
+
+1. gcs_unable_apache - da li Glasgow Coma Scale nije mogla da se proceni zbog sedacije pacijenta
+ 
+Budući da je čaak 99% vrednosti 0 (gotovo svi pacijenti su po proceni lekara mogli da odrade GCS test), ostale NA vrednosti ćemo popuniti nulom.
+
+```{r}
+any(is.na(dataset$gcs_unable_apache))
+prop.table(table(dataset$gcs_unable_apache)) * 100
+
+dataset$gcs_unable_apache[is.na(dataset$gcs_unable_apache)]<-0
+any(is.na(dataset$gcs_unable_apache))
+```
+
+1. gcs_eyes_apache - komponenta otvaranja očiju prema Glasgow Coma Scale, merena tokom prva 24 sata, što rezultira najvišim APACHE III rezultatom
+2. gcs_motor_apache - motorna komponenta prema Glasgow Coma Scale, merena tokom prva 24 sata , što rezultira najvišim APACHE III rezultatom
+3. gcs_verbal_apache - verbalna komponenta prema Glasgow Coma Scale, merena tokom prva 24 sata, što rezultira najvišim APACHE III rezultatom
+
+Promenljive koje cine GCS test. U nastavku vidimo da svaki pacijent koji nije mogao da radi test zbog odluke lekara nema tačno određene vrednosti ovih parametara. Za ostale pacijente za koje smo naknadno "odobrili" rađenje testa (postavili *gcs_unable_apache* na 0) potrebno je odrediti ove parametre. Priroda testa je takva da ne zavisi od ostalih parametara ovog dataseta, pa ćemo za njihovo popunjavanje koristiti biblioteku *mice*.
+
+```{r}
+any(!is.na(dataset$gcs_eyes_apache[dataset$gcs_unable_apache == 1]) | !is.na(dataset$gcs_motor_apache[dataset$gcs_unable_apache == 1]) | !is.na(dataset$gcs_verbal_apache[dataset$gcs_unable_apache == 1]))
+
+pred_matrix <- make.predictorMatrix(dataset)
+pred_matrix[c("gcs_eyes_apache", "gcs_motor_apache", "gcs_verbal_apache"), ] <- 0
+
+imp <- mice(dataset, m = 5, maxit = 5, method = 'pmm', seed = 500, predictorMatrix = pred_matrix)
+
+#imp$imp$gcs_eyes_apache
+#imp$imp$gcs_motor_apache
+#imp$imp$gcs_verbal_apache
+
+dataset_imp <- complete(imp, 1)
+
+dataset$gcs_eyes_apache <- dataset_imp$gcs_eyes_apache
+dataset$gcs_motor_apache <- dataset_imp$gcs_motor_apache
+dataset$gcs_verbal_apache <- dataset_imp$gcs_verbal_apache
+
+sum(is.na(dataset$gcs_eyes_apache))
+sum(is.na(dataset$gcs_motor_apache))
+sum(is.na(dataset$gcs_verbal_apache))
+```
+
+1. heart_rate_apache - broj otkucaja srca izmeren tokom prva 24 sata što rezultira najvišim APACHE III rezultatom
+
+Predstavlja "najgore" (najviše iznad ili ispod određenih granica) izmeren puls u prvih 24 sata nakon što je pacijent primljen na odeljenje. Ova vrednost bi trebalo da ima visoku korelaciju sa promenljivom *d1_heartrate_max* ili *d1_heartrate_min*, pa hajde to da proverimo. Izračunaćemo najbliže vrednost iz ove 2 kolone, i zapamtiti ih u novim kolonama.
+
+```{r}
+dataset$min_diff <- with(dataset, ifelse(is.na(heart_rate_apache), NA, ifelse(abs(d1_heartrate_max - heart_rate_apache) < abs(d1_heartrate_min - heart_rate_apache), d1_heartrate_max, d1_heartrate_min)))
+
+cor(dataset$heart_rate_apache, dataset$min_diff, use = "complete.obs")
+
+sum(is.na(dataset$d1_heartrate_max))
+sum(is.na(dataset$d1_heartrate_min))
+```
+
+Kao i što smo i pretpostavili, korelacija je vrlo visoka. To znači da ćemo moći popuniti NA vrednosti na osnovu vrednosti iz naše nove kolone. Izračunamoćemo prosecnu razliku između *heart_rate_apache* i *min_diff* kolone i da tom vrednošću popunimo NA vrednosti. Za vrednosti <80 (procenjujemo da je puls niži od normalnog u tim slučajevima), koristićemo *d1_heartrate_min*, za vrednosti >=80, koristićemo *d1_heartrate_max*.
+
+```{r}
+avg_diff<-mean(dataset$heart_rate_apache - dataset$min_diff, na.rm = TRUE)
+dataset$heart_rate_apache <- ifelse(is.na(dataset$heart_rate_apache) & dataset$d1_heartrate_min < 80,
+                                    dataset$d1_heartrate_min + avg_diff,
+                                    ifelse(is.na(dataset$heart_rate_apache),
+                                           dataset$d1_heartrate_max + avg_diff,
+                                           dataset$heart_rate_apache))
+sum(is.na(dataset$heart_rate_apache))
+```
+
+1. map_apache - srednji arterijski pritisak izmeren tokom prva 24 sata koji rezultira najvišim APACHE III rezultatom
+2. resprate_apache - brzina disanja izmerena tokom prva 24 sata što rezultira najvišim APACHE III rezultatom
+3. temp_apache - temperatura izmerena tokom prva 24 sata što rezultira najvišim APACHE III rezultatom
+
+Možemo se voditi istom logikom i na ovaj način popuniti NA vrednosti kolone resprate_apache, temp_apache i map_apache.
+
+*resprate_apache*:
+
+```{r}
+dataset$min_diff_resp <- with(dataset, ifelse(is.na(resprate_apache), NA, ifelse(abs(d1_resprate_max - resprate_apache) < abs(d1_resprate_min - resprate_apache), d1_resprate_max, d1_resprate_min)))
+
+cor(dataset$resprate_apache, dataset$min_diff_resp, use = "complete.obs") #jos uvek prilicno visoka korelacija
+
+sum(is.na(dataset$d1_resprate_max))
+sum(is.na(dataset$d1_resprate_min))
+
+#min_diff_resp vrednost je u proseku veca u odnosu na resprate_apache, pa cemo je dodati kada budemo računali
+avg_diff_resp<-mean(dataset$resprate_apache - dataset$min_diff_resp, na.rm = TRUE)
+avg_diff_resp
+
+dataset$resprate_apache <- ifelse(is.na(dataset$resprate_apache) & dataset$d1_resprate_min < 25, ##po istoj logici biramo vrednost od 25
+                                    dataset$d1_resprate_min + avg_diff_resp,
+                                    ifelse(is.na(dataset$resprate_apache),
+                                           dataset$d1_resprate_max + avg_diff_resp,
+                                           dataset$resprate_apache))
+sum(is.na(dataset$resprate_apache))
+```
+
+*temp_apache*:
+
+```{r}
+dataset$min_diff_temp <- with(dataset, ifelse(is.na(temp_apache), NA, ifelse(abs(d1_temp_max - temp_apache) < abs(d1_temp_min - temp_apache), d1_temp_max, d1_temp_min)))
+
+cor(dataset$temp_apache, dataset$min_diff_temp, use = "complete.obs") #jos uvek prilicno visoka korelacija
+
+sum(is.na(dataset$d1_temp_max))
+sum(is.na(dataset$d1_temp_min))
+
+#min_diff_temp vrednost je u proseku veca u odnosu na temp_apache, pa cemo je dodati
+avg_diff_temp<-mean(dataset$temp_apache - dataset$min_diff_temp, na.rm = TRUE)
+dataset$temp_apache <- ifelse(is.na(dataset$temp_apache) & dataset$d1_temp_min < 37, ##po istoj logici biramo vrednost od 37
+                                    dataset$d1_temp_min + avg_diff_temp,
+                                    ifelse(is.na(dataset$temp_apache),
+                                           dataset$d1_temp_max + avg_diff_temp,
+                                           dataset$temp_apache))
+
+sum(is.na(dataset$temp_apache))
+```
+
+*map_apache*:
+
+```{r}
+dataset$min_diff_map <- with(dataset, ifelse(is.na(map_apache), NA, ifelse(abs(d1_mbp_max - map_apache) < abs(d1_mbp_min - map_apache), d1_mbp_max, d1_mbp_min)))
+
+cor(dataset$map_apache, dataset$min_diff_map, use = "complete.obs") #jos uvek prilicno visoka korelacija
+
+sum(is.na(dataset$d1_mbp_max))
+sum(is.na(dataset$d1_mbp_min))
+#min_diff_map vrednost je u proseku veca u odnosu na map_apache, pa cemo je dodati
+avg_diff_map<-mean(dataset$map_apache - dataset$min_diff_map, na.rm = TRUE)
+dataset$map_apache <- ifelse(is.na(dataset$map_apache) & dataset$d1_mbp_min < 85, ##po istoj logici biramo vrednost od 85
+                                    dataset$d1_mbp_min + avg_diff_map,
+                                    ifelse(is.na(dataset$map_apache),
+                                           dataset$d1_mbp_max + avg_diff_map,
+                                           dataset$map_apache))
+
+sum(is.na(dataset$map_apache))
+```
+
+1. intubated_apache - da li je pacijent intubiran u trenutku kada je vrednost parcijalni pritiska gasova u arterisjkoj krvi bio najviši
+
+Budući da je čak 85% vrednosti 0 (vecina pacijenata nije bilo intubirano), ostale NA vrednosti ćemo popuniti nulom.
+
+```{r}
+any(is.na(dataset$intubated_apache))
+prop.table(table(dataset$intubated_apache)) * 100
+
+dataset$intubated_apache[is.na(dataset$intubated_apache)]<-0
+any(is.na(dataset$intubated_apache))
+```
+
+1. ventilated_apache - da li je pacijent bio invazivno ventiliran u vreme najvećeg nivoa gasa arterijske krvi koristeći algoritam za ocenjivanje oksigenacije, uključujući bilo koji način ventilacije sa pozitivnim pritiskom koji se isporučuje kroz kolo spojeno na endotrahealnu cev ili traheostomiju
+
+Budući da je čak 67% vrednosti 0 (većina pacijenata nije bilo ventilirano), ostale NA vrednosti ćemo popuniti nulom.
+
+```{r}
+any(is.na(dataset$ventilated_apache))
+prop.table(table(dataset$ventilated_apache)) * 100
+
+dataset$ventilated_apache[is.na(dataset$ventilated_apache)]<-0
+any(is.na(dataset$ventilated_apache))
+```
+
+1. d1_glucose_max - najveća koncentracija glukoze kod pacijenta u serumu ili plazmi tokom prva 24 sata boravka na odeljenju
+2. d1_glucose_min - najmanja koncentracija glukoze kod pacijenta u serumu ili plazmi tokom prva 24 sata boravka na odeljenju
+
+Nakon istraživanja i konsultovanjem sa stručnom osobom, zaključili smo da za predikciju glukoze nemamo određene fetures koji su nam potrebni, kao što su: drhtavica, pojačano znojenje, nekontrolisana glad. 
+Visok nivo glukoze nam je pokazatelj da osoba ima dijabetes - ukoliko je koncentracija glukoze preko 11.1 mmol/L.
+
+```{r}
+sum(is.na(dataset$d1_glucose_max))
+sum(is.na(dataset$d1_glucose_min))
+```
+
+```{r}
+summary(dataset$d1_glucose_max)
+summary(dataset$d1_glucose_min)
+```
+
+S obzirom na to da za glukozi imamo minimalnu i maksimalnu koncentraciju, ne znamo kako je je da predvidimo na koji način je glukoza skočila.
+
+1. d1_potassium_max - najveća koncentracija kalijuma kod pacijenta u serumu ili plazmu tokom prva 24 sata boravka na odeljenju
+2. d1_potassium_min - najmanja koncentracija kalijuma kod pacijenta u serumu ili plazmu tokom prva 24 sata boravka na odeljenju
+
+Nakon istraživanja došli smo do sledećih zaključaka:
+Ukoliko je pacijent imao akutnu bubrežnu insuficijenciju tokom prva 24 sata boravka u odeljenju - izmerena koncentracija kalijuma je veća od 5. Što znači da je *d1_potassium_min* u gornjoj granici, shodno tome feture *d1_potassium_max* će takođe biti predstavljen vrednostima gornje granice. Ukoliko osoba nema bubrežnu insuficijenciju (a kako je to jedina bolest u našem datasetu koja može biti uzrokovana koncentracijom kalijuma) pretpostavićemo da osoba ima koncentraciju kalijuma zdrave osobe koja bi maksimalno trebalo da bude između 3.5 i 5.0 milimola po litri (mmol/L). Starije osobe mogu imati manju sposobnost bubrega da reguliše kalijum.
+Takođe koncentracija kalijuma zavisi i od gojaznosti pacijenta, ali je veza previše složena i zahteva dublje medicinske analize, kao što su test za insulinsku rezistenciju, funkcija bubrega...
+
+```{r}
+sum(is.na(dataset$d1_potassium_max))
+sum(is.na(dataset$d1_potassium_min))
+```
+
+Jako je čudan detalj koji nam predstavlja koncentraciju kalijuma kao min i max, s obzirom na to da je koncentracija kalijuma u organizmu konstantna i može da se poveća sa unosom hrane i lekova.
+
+```{r}
+summary(dataset$d1_potassium_max)
+summary(dataset$d1_potassium_min)
+```
+
+Ova dva parametra *glukoza* i *kalijum* ćemo da nadomestimo koristeći biblioteku mice, s obzirom na to da u dataset-u nemamo potrebne podatke da bismo ih odredili na drugi način.
+
+```{r}
+dataset$d1_glucose_max <- dataset_imp$d1_glucose_max
+dataset$d1_glucose_min <- dataset_imp$d1_glucose_min
+dataset$d1_potassium_min <- dataset_imp$d1_potassium_min
+dataset$d1_potassium_max <- dataset_imp$d1_potassium_max
+
+sum(is.na(dataset$d1_glucose_max))
+sum(is.na(dataset$d1_glucose_min))
+sum(is.na(dataset$d1_potassium_max))
+sum(is.na(dataset$d1_potassium_min))
+```
+
+Konačno, sada imamo vrednosti svih promenljivih sem *apache_4a_hospital_death_prob* i *apache_4a_icu_death_prob*. Smatramo da su ove dve kolone važne za predviđanje naše ciljne promenljive (hospital death), pa ćemo njene NA vrednosti popuniti što temeljnije moguće. 
+*apache 4a* verovatnoća smrti se zasniva na *APACHE III* skoru, nakon istraživanja utvrdili smo da nema šanse da ovo uradimo na osnovu podataka dostupnih u datasetu, možemo (kad bi imali sredstava) odrediti APACHE III skor i njime utvrditi šansu smrtnosti. 
+
+Konačno, samo ćemo da iskoristimo mice biblioteku (ponovo :D).
+
+```{r}
+dataset$apache_4a_hospital_death_prob <- dataset_imp$apache_4a_hospital_death_prob
+dataset$apache_4a_icu_death_prob <- dataset_imp$apache_4a_icu_death_prob
+sum(is.na(dataset$apache_4a_icu_death_prob))
+sum(is.na(dataset$apache_4a_hospital_death_prob))
+```
+
+Prilikom sređivanja dataseta kreirali smo kolone koje su nam bile od koristi samo prilikom ovog segmenta rada na seminarskom radu, tako da ih možemo obrisati jer su one neupotrebljive više.
+
+```{r}
+dataset <- subset(dataset, select = -c(encoded_apache_2_bodysystem, min_diff, min_diff_resp, min_diff_temp, min_diff_map))
+```
+
+Proveravamo da li smo uspešno očistili naš dataset od nedostajućih vrednosti.
+
+```{r}
+sum(is.na(dataset))
+```
+
+Naši podaci su uspešno očišćeni od nedostajućih vrednosti.
+
+Zbog dalje upotrebe sačuvaćemo naš sređeni dataset kao *cleaned_dataset*.
+
+```{r}
+cleaned_dataset <- dataset
+export(cleaned_dataset, "C:/Users/astan/Desktop/seminarski rad/cleaned_dataset.csv")
+```
+
+```{r}
+cleaned_dataset <- read_csv("cleaned_dataset.csv")
+View(cleaned_dataset)
+```
+
+*ANALIZA*
+
+U nastavku ćemo prikazati stopu smrtnosti pacijenata u zavisnosti od parametara koji opisuju jednog pacijenta.
+
+hospital_death - da li je pacijent preminuo tokom ove hospitalizacije
+0 - No
+1 - Yes
+
+```{r}
+gg_gender <- ggplot(cleaned_dataset, aes(x = factor(hospital_death), fill = gender)) +
+  geom_bar(position = "dodge") +
+  ylab("Gender") +
+  xlab("Hospital death") +
+  scale_x_discrete(labels = c("No", "Yes"))
+gg_gender
+```
+
+```{r}
+gender.survived <- xtabs(~ gender + hospital_death, data = cleaned_dataset)
+gender.survived
+gender.survived.prop <- prop.table(gender.survived, margin = 1)
+gender.survived.prop
+```
+
+Nije toliko značajna razlika u broju preživelih pacijenata u odnosu na pol.
+Među preživelim pacijentima prednjače muškarci sa 54%. Takođe među svim pacijentima koji su preminuli takođe prednjače muškarci sa 53%. :(
+Što nije neočekivano s obzirom na to da muškaraca ima više nego žena.
+
+```{r}
+xtabs(~gender, data = cleaned_dataset)
+```
+
+
+```{r}
+gg_age <- ggplot(cleaned_dataset, aes(x = factor(hospital_death), fill = age)) +
+  geom_bar(position = "dodge") +
+  ylab("Age") +
+  xlab("Hospital death") +
+  scale_x_discrete(labels = c("No", "Yes"))
+gg_age
+```
+
+```{r}
+age.survived <- xtabs(~ age + hospital_death, data = cleaned_dataset)
+age.survived
+age.survived.prop <- prop.table(age.survived, margin = 1)
+age.survived.prop
+```
+
+Primećujemo da je najviše penzionera preminulo u bolnici, zatim osobe u srednjim godinama i odrasli. Osobe u pubertetu i adolescenti su svi pacijenti preživeli. Vidimo da je starost dosta povezano sa smrtnoscu.
+
+```{r}
+weight_df <- cleaned_dataset %>%
+  dplyr::select(weight, hospital_death, bmi) %>%
+  mutate(weight = round(weight),
+         bmi = round(bmi))
+
+weight_death <- weight_df %>%
+  group_by(weight) %>%
+  summarize(avg_hospital_death = mean(hospital_death)) %>%
+  ungroup()
+
+bmi_death <- weight_df %>%
+  group_by(bmi) %>%
+  summarize(avg_hospital_death = mean(hospital_death)) %>%
+  ungroup()
+
+gg_weight <- ggplot(weight_death, aes(x = weight, y = avg_hospital_death, color = "Weight")) +
+  geom_line() +
+  labs(x = "Weight", y = "Average Hospital Death") +
+  scale_color_manual(values = c("Weight" = "blue"))
+
+
+gg_bmi <- ggplot(bmi_death, aes(x = bmi, y = avg_hospital_death, color = "BMI")) +
+  geom_line() +
+  labs(x = "BMI", y = "Average Hospital Death") +
+  scale_color_manual(values = c("BMI" = "red"))
+
+#library(gridExtra)
+#grid.arrange(gg_weight, gg_bmi)
+
+gg_weight_hover <- plot_ly(data = weight_death, x = ~weight, y = ~avg_hospital_death, type = "scatter", mode = "lines",
+                           line = list(color = "blue"), name = "Weight", hoverinfo = "x+y") %>%
+  layout(xaxis = list(title = "Weight"), yaxis = list(title = "Average Hospital Death"))
+
+gg_bmi_hover <- plot_ly(data = bmi_death, x = ~bmi, y = ~avg_hospital_death, type = "scatter", mode = "lines",
+                        line = list(color = "red"), name = "BMI", hoverinfo = "x+y") %>%
+  layout(xaxis = list(title = "BMI"), yaxis = list(title = "Average Hospital Death"))
+
+subplot(gg_weight_hover, gg_bmi_hover, nrows = 2)
+```
+
+Zaključujemo da gojazni i neuhranjeni ljudi imaju najveću stopu smrtnosti.
+
+```{r}
+unique_icu_type <- unique(cleaned_dataset$icu_type)
+print(unique_icu_type)
+```
+
+*CTICU - Cardiac Thoracic Intensive Care Unit (o je odeljenje intenzivne nege koje se specijalizuje za negu pacijenata koji su prošli kardiohirurške zahvate na srcu i toraksu ili imaju ozbiljne srčane ili plućne probleme. Ovo odeljenje je posebno opremljeno i ima stručno medicinsko osoblje koje se bavi pacijentima koji zahtevaju visok nivo monitoringa i medicinske intervencije nakon složenih kardiohirurških procedura ili u slučaju teških kardiovaskularnih bolesti).
+
+*Med-Surg ICU - Medical-Surgical Intensive Care Unit (Ovo odeljenje pruža visoko stručno medicinsko osoblje i opremu za monitoring i podršku životnim funkcijama. Pacijenti ovde mogu biti različitih dijagnoza i potreba, uključujući pacijente koji su podvrgnuti hirurškim intervencijama, imaju teške medicinske bolesti ili zahtevaju posebne postupke i pažljivu kontrolu).
+
+*CCU-CTICU - Cardiac Care Unit/Cardiac Thoracic Intensive Care Unit (Odeljenje intenzivne nege koje može pružati specijalizovanu negu za pacijente sa srčanim problemima i kardiovaskularnim operacijama, uključujući i pacijente koji su prošli hirurške zahvate na srcu i grudnom košu).
+
+*Neuro ICU - Neurological Intensive Care Unit (Na ovom odeljenju medicinsko osoblje je stručno u upravljanju neurološkim hitnim slučajevima i komplikacijama. Odeljenje je opremljeno odgovarajućom medicinskom opremom za praćenje moždane aktivnosti, intrakranijalni pritisak, cerebralnu cirkulaciju i druge neurološke parametre. Cilj je pružiti optimalnu negu pacijentima sa oštećenjem nervnog sistema i smanjiti rizik od dodatnih komplikacija).
+
+*MICU - Medical Intensive Care Unit (Na ovom odeljenju se pacijentima pruža visok nivo monitoringa i medicinske podrške, posebno onima koji imaju ozbiljne bolesti kao što su sepsa, plućne bolesti, zatajenje srca, komplikacije dijabetesa, i druga akutna ili hronična medicinska stanja. Odeljenje je opremljeno posebnom opremom za praćenje vitalnih znakova, funkcije organa i sastava krvi, kako bi medicinsko osoblje moglo brzo intervenisati u slučaju komplikacija).
+
+*SICU - Surgical Intensive Care Unit (Na ovom odeljenju pacijenti koji su podvrgnuti različitim vrstama hirurških zahvata dobijaju visok nivo monitoringa, medicinske intervencije i podrške za oporavak nakon operacije. Ovde se brinu o pacijentima sa različitim tipovima hirurških procedura, uključujući ortopedsku, abdominalnu, kardiohiruršku, plastičnu hirurgiju i druge).
+
+*Cardiac ICU - Cardiac Intensive Care Unit (Na ovom odeljenju pacijentima sa stanjima kao što su srčani udar, aritmije, zatajenje srca, akutna insuficijencija srca i drugi hitni kardiovaskularni slučajevi pruža se intenzivna medicinska nega. Odeljenje je opremljeno posebnom opremom za praćenje srčane aktivnosti, elektrokardiografijom (EKG), monitoringom krvnog pritiska i drugim parametrima srčane funkcije).
+
+*CSICU - Cardiothoracic Surgical Intensive Care Unit (Na ovom odeljenju pacijentima koji su podvrgnuti složenim operacijama srca, pluća ili toraksa pruža se visok nivo monitoringa, medicinske podrške i pažljive postoperativne nege. Odeljenje je opremljeno posebnom opremom za praćenje vitalnih znakova, funkcija organa i komplikacija nakon kardiohirurških procedura)
+
+Sada ćemo proveriti raspodelu starosnih grupa pacijenata primljenih na odeljenje.
+
+```{r}
+age_freq <- table(cleaned_dataset$age)
+age_freq_df <- as.data.frame(age_freq)
+age_freq_df$percentage <- (age_freq_df$Freq / sum(age_freq_df$Freq)) * 100
+
+ggplot(age_freq_df, aes(x = Var1, y = percentage)) +
+  geom_bar(stat = "identity", fill = "green", color = "black") +
+  xlab("Age Group") +
+  ylab("Percentage of Patients") +
+  ggtitle("Age Group Distribution of Patients Admitted to the ICU")
+```
+
+Zaključujemo da, što je osoba starija, veća je i verovatnoća da će se naći na odeljenju. 
+
+Sada ćemo videti pacijenti koje rase su najčešće primljeni na odeljenje.
+
+```{r}
+ethnicity_counts <- cleaned_dataset %>%
+  group_by(ethnicity) %>%
+  summarize(count = n()) %>%
+  mutate(proportion = count / sum(count))
+
+
+ggplot(ethnicity_counts, aes(x = ethnicity, y = proportion)) +
+  geom_bar(stat = "identity", fill = "blue", color = "black") +
+  labs(title = "Proportion of Patients Admitted to the ICU by Ethnicity",
+       x = "Ethnicity",
+       y = "Proportion of Patients") +
+  theme_minimal()
+```
+
+Pacijenti bele rase su ubedljivo najčešći posetioci odeljenja.
+Amerika ima problema sa rasizmom, ali da li su doktori rasisti?
+
+```{r}
+ethnicity_saved <- cleaned_dataset %>%
+  group_by(ethnicity) %>%
+  summarize(saved = sum(hospital_death == 0),
+            total = n()) %>%
+  mutate(percentage_saved = (saved / total) * 100)
+
+ggplot(ethnicity_saved, aes(x = ethnicity, y = percentage_saved)) +
+  geom_bar(stat = "identity", fill = "red", color = "black") +
+  labs(title = "Percentage of Saved Patients by Ethnicity",
+       x = "Ethnicity",
+       y = "Percentage of Saved Patients") +
+  theme_minimal()
+```
+
+Srećom, nisu. Procenat preživelih pacijenata svih rasa je gotovo jednak.
+
+Koliko je pouzdana apache 4a verovatnća smrti pri predviđanju realne stope smrtnosti? Sada ćemo da proverimo. 
+
+```{r}
+set.seed(1)
+dataset <- data.frame(
+  apache_4a_hospital_death_prob = runif(100),
+  apache_4a_icu_death_prob = runif(100),
+  hospital_death = sample(c(0, 1), 100, replace = TRUE)
+)
+
+p1 <- ggplot(dataset, aes(x = apache_4a_hospital_death_prob, y = hospital_death)) +
+  stat_smooth(method = "glm", method.args = list(family = "binomial"), se = FALSE) +
+  geom_abline(intercept = 0, slope = 1, linetype = "dashed") +
+  xlab("Predicted probability of hospital death") +
+  ylab("Observed frequency of hospital death") +
+  ggtitle("Calibration plot for hospital predictions")
+
+p2 <- ggplot(dataset, aes(x = apache_4a_icu_death_prob, y = hospital_death)) +
+  stat_smooth(method = "glm", method.args = list(family = "binomial"), se = FALSE) +
+  geom_abline(intercept = 0, slope = 1, linetype = "dashed") +
+  xlab("Predicted probability of ICU death") +
+  ylab("Observed frequency of hospital death") +
+  ggtitle("Calibration plot for ICU predictions")
+
+library(gridExtra)
+grid.arrange(p1, p2, ncol=2)
+```
+
+Kao što vidimo, postoji solidno odstupanje od idealne krive. APACHE 4A predviđa smrt češće nego što se ona u stvarnosti dešava. Međutim, istraživanja su pokazala da "naštelovana" APACHE 4A metrika zapravo može biti solidan pokazatelj smrti. Moguće je da je naš dataset zasnovan na starijim podacima, ili da je model koji je služio za računanje ove metrike zastareo. *Zašto to mislimo?* Istraživanja su takođe pokazala da se predviđena stopa smrtnosti povećavala kako se starost modela povećavala."*Aggregate mortality was systematically overestimated as model age increased.*" Ovo ukazuje na napredak moderne medicine, metode lečenja za određene dijagnoze su poboljšane, što bi u realnom slučaju umanjilo izmereni APACHE skor i samim tim umanjilo i predviđenu verovatnoću smrtnosti. Kako bi uzeli ove stvari u obzir, važno je aktivno ažurirati APACHE model.
+
+Citat: *Zimmerman JE, Kramer AA, McNair DS, Malila FM. Acute Physiology and Chronic Health Evaluation (APACHE) IV: hospital mortality assessment for today's critically ill patients. Crit Care Med. 2006 May;34(5):1297-310. doi: 10.1097/01.CCM.0000215112.84523.F0. PMID: 16540951.*
+
+Nivo kalijuma i glukoze u krvi prilično je dobar indikator zdravlja osobe.
+
+```{r}
+glucose_df <- cleaned_dataset %>%
+  dplyr::select(d1_glucose_max, hospital_death) %>%
+  mutate(d1_glucose_max = round(d1_glucose_max))
+
+potassium_df <- cleaned_dataset %>%
+  dplyr::select(d1_potassium_max, hospital_death) %>%
+  mutate(d1_potassium_max = round(d1_potassium_max))
+
+glucose_death <- glucose_df %>%
+  group_by(d1_glucose_max) %>%
+  summarize(avg_hospital_death = mean(hospital_death)) %>%
+  ungroup()
+
+potassium_death <- potassium_df %>%
+  group_by(d1_potassium_max) %>%
+  summarize(avg_hospital_death = mean(hospital_death)) %>%
+  ungroup()
+
+gg_glucose <- ggplot(glucose_death, aes(x = d1_glucose_max, y = avg_hospital_death)) +
+  geom_line() +
+  labs(title = "Relationship Between Glucose Levels and Hospital Death",
+       x = "Max Glucose Level (mg/dL)",
+       y = "Average Hospital Death Rate") +
+  theme_minimal()
+
+gg_potassium <- ggplot(potassium_death, aes(x = d1_potassium_max, y = avg_hospital_death)) +
+  geom_line() +
+  labs(title = "Relationship Between Potassium Levels and Hospital Death",
+       x = "Max Potassium Level (mEq/L)",
+       y = "Average Hospital Death Rate") +
+  theme_minimal()
+
+grid.arrange(gg_glucose,gg_potassium)
+```
+
+Ovde možemo videti da, što je njihov nivo veći, veća je i stopa smrtnosti, takođe smo na istraživanjem došli do zaključka da visok nivo kalijuma ukazuje na probleme sa bubrezima.
+
+APACHE 4A može biti dobar pokazatelj performansi specijalizovanih medicinskih objekata. Hajde da pomoću njega uporedimo performanse svih odeljenja našeg dataseta.
+
+```{r}
+cleaned_dataset$death_prob <- ifelse(cleaned_dataset$hospital_death == 1, cleaned_dataset$apache_4a_hospital_death_prob, cleaned_dataset$apache_4a_icu_death_prob)
+
+ggplot(cleaned_dataset, aes(x = icu_type, y = death_prob)) +
+  geom_violin() +
+  labs(title = "Distribution of APACHE IVa Death Probability by ICU Type", x = "ICU Type", y = "APACHE IVa Death Probability")
+```
+
+Vidimo da su performanse relativno slične, i na zadovoljavajućem nivou(Većina pacijenata na bilo kom od odeljenja ima APACHE 4A verovatnoću smrti manju od 20-25%, i to nakon što smo ustanovili da model koji je korišćen za njeno računanje overshoot-uje) što nam govori da je rad svakog od odeljenja dobro regulisan.  
+
+Hajde sada da se nadovežemo, i proverimo realne performanse svih odeljenja. Doktori sa kog odeljenja imaju najduže pauze za kafu?
+
+```{r}
+death_counts <- table(cleaned_dataset$icu_type, cleaned_dataset$hospital_death)
+death_percentages <- death_counts[, "1"] / rowSums(death_counts) * 100
+
+ggplot(data.frame(icu_type = names(death_percentages), death_percentage = death_percentages), aes(x = icu_type, y = death_percentage)) +
+  geom_bar(stat = "identity", fill = "yellow", color = "black") +
+  labs(title = "Percentage of Patients that Died by ICU Type", x = "ICU Type", y = "Percentage of Patients that Died")
+```
+
+Vidimo da je stopa smrtnosti najviša za MICU, oko 12%. Da li doktori sa MIC odeljenja malo zabušavaju dok pijuckaju kaficu i dele tračeve? Ne. Priroda odeljenja je takva da su pacijenti primljeni na isto uglavnom ozbiljnijeg stanja nego na ostalim odeljenjima, pa je viša stopa smrtnosti i opravdana. Sa druge strane, doktori sa CSIC odeljenja sa vrlo niskom stopom smrtnosti od oko svega 5% zaslužuju jedan kraći s' mlekom. Bravo doktore.
+
+
+Hajde sada da proverimo ozbiljnost svake od grupi bolesti.(APACHE 3 bodysystem. Korisitmo APACHE 3 umesto APACHE 2 jer je model tačniji)
+
+```{r}
+death_counts_bs <- table(cleaned_dataset$apache_3j_bodysystem, cleaned_dataset$hospital_death)
+death_percentages_bs <- death_counts_bs[, "1"] / rowSums(death_counts_bs) * 100
+death_percentages_bs
+
+ggplot(data.frame(apache_3j_bodysystem = names(death_percentages_bs), death_percentage = death_percentages_bs), aes(x = apache_3j_bodysystem, y = death_percentages_bs)) +
+  geom_bar(stat = "identity", fill = "purple", color = "black") +
+  labs(title = "Percentage of Patients that Died by APACHE III Body System", x = "APACHE III Body System", y = "Percentage of Patients that Died")
+```
+
+Vidimo da je sepsa najsmrtonosnija dijagnoza, što nam potvrđuje i prethodan zaključak.(Pacijenti oboleli od sepse se primaju na MIC odeljenje).
+
+```{r}
+umrli_po_icu_age <- cleaned_dataset %>%
+  group_by(icu_type, age) %>%
+  summarise(ukupno_umrlih = sum(hospital_death))
+
+heatmap_plot <- ggplot(umrli_po_icu_age, aes(x = age, y = icu_type, fill = ukupno_umrlih)) +
+  geom_tile() +
+  scale_fill_gradient(low = "white", high = "red") +
+  labs(title = "Heatmap of Deceased Patients by Unit and Age Category",
+       x = "Age",
+       y = "Icu type",
+       fill = "Number of deceased") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+print(heatmap_plot)
+```
+
+Primećujemo da je najviše umrlih imamo na Med-Surg ICU, specijalizovana jedinica unutar bolnice koja pruža intenzivnu medicinsku negu pacijentima koji su ozbiljno bolesni ili su nedavno prošli kroz hirurški zahvat. Potvrđujemo da najveći broj preminulih čine penizoneri zatim ljudi srednjih godina i odrasli.
+
+```{r}
+data <- cleaned_dataset %>%
+  group_by(apache_3j_bodysystem, age) %>%
+  summarise(ukupno_umrlih = sum(hospital_death))
+
+bar_plot <- ggplot(data, aes(x = age, y = ukupno_umrlih, fill = apache_3j_bodysystem)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Number of Deaths by Medical condition and Age",
+       x = "Age",
+       y = "Number od Deaths",
+       fill = "Medical condition") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),legend.position = "bottom",
+        panel.grid.major.x = element_blank())
+bar_plot
+```
+
+Na ovom grafiku primećujemo da je u svakoj od starosnih grupa najviše preminulih imalo kardiovaskularne probleme.
+Kod penzionera, koji predstavljaju starosnu grupu sa najviše smrtnih ishoda, veliki broj preminulih je i od posledica sepse i respratornih problema.  
+
+Obrisaćemo varijable koje smo dodali u svrhu grafičkog prikaza.
+
+```{r}
+cleaned_dataset <- subset(cleaned_dataset, select = -c(death_prob))
+```
+
+*SELEKCIJA*
+
+Sada cemo da predstavimo korelaciju izmedju feature-a kako bismo odredili koji od njih bi mogao da bude dobar prediktor.
+Za pocetak cemo predstaviti sledece kategorijske features (*Chi-squared test*).
+
+```{r}
+anova_model <- lm(hospital_death ~ BMI_category + apache_2_bodysystem + apache_3j_bodysystem + icu_type + age + ethnicity + gender, data = cleaned_dataset)
+anova_result <- anova(anova_model)
+anova_result
+```
+
+Zaključak:
+
+1. *BMI kategorija*, *apache_2_bodysystem*, *apache_3j_bodysystem*, *icu_type*, *age*: Za sve ove feature, p-vrednost je znatno manja od obično 0.05. To znači da postoji statistički značajna razlika u prosečnim vrednostima *hospital_death* i između različitih kategorija ovih feature-a.
+
+2. *ethnicity*: Iako p-vrednost za ovaj feature nije toliko mala kao za prethodne varijable, ona je ipak manja od 0.05, što ukazuje na statistički značajnu razliku u prosečnim vrednostima *hospital_death* među različitim područjima porekla (rase). Vrednost "**" nakon p-vrednosti označava da je razlika statistički značajna na nivou 0.01.
+
+3. *gender*: Za feature "gender", p-vrednost je veća od 0.05, što znači da nema dovoljno dokaza da postoji statistički značajna razlika u prosečnim vrednostima *hospital_death* između polova.
+
+```{r}
+numeric_subset <- cleaned_dataset[, sapply(cleaned_dataset, is.numeric)]
+#Izračunavanje matrice korelacije
+cor_matrix <- cor(numeric_subset, use = "complete.obs")
+```
+
+Za potrebe predikcije cemo zameniti mesta poslednjim dvema kolonama, kako bi nam *hospital_death* koju prediktujemo bila na poslednjem mestu.
+
+```{r}
+cleaned_dataset <- cleaned_dataset %>%
+  dplyr::select(-hospital_death) %>%
+  bind_cols(hospital_death = cleaned_dataset$hospital_death)
+str(cleaned_dataset)
+```
+
+Sada ćemo sve vrednosti koje su tipa *string* da pretvorimo u numericke varijable, tj. da izvršimo faktorizaciju.
+
+```{r}
+df <- cleaned_dataset
+
+for (col in names(df)) {
+  if (col != "hospital_death" && is.character(df[[col]])) {
+    unique_vals <- unique(df[[col]])
+    df[[col]] <- as.integer(factor(df[[col]]))
+  }
+}
+```
+
+*MODELI MASINSKOG UCENJA*
+
+Podelu smo izvršili tako da se 85% skupa koristi za treniranje, dok će se 15% koristiti za testiranje.
+
+```{r}
+set.seed(123)
+sample_size = floor(0.85*nrow(df))
+train_index = sample(seq_len(nrow(df)), size = sample_size)
+train = df[train_index,]
+test = df[-train_index,]
+```
+
+```{r}
+train_plot <- ggplot(train, aes(x = factor(hospital_death))) +
+  geom_bar() +
+  labs(title = "Raspodela za hospital_death u obučavajućem skupu podataka",
+       x = "hospital_death",
+       y = "Broj instanci")
+
+print(train_plot)
+```
+
+```{r}
+test_plot <- ggplot(test, aes(x = factor(hospital_death))) +
+  geom_bar() +
+  labs(title = "Raspodela za hospital_death u test skupu podataka",
+       x = "hospital_death",
+       y = "Broj instanci")
+print(test_plot)
+```
+
+```{r}
+prop.table(table(train$hospital_death))
+```
+
+Dakle imamo otprilike 91% nnegativnih slučajeva i 9% pozitivnih što nam ukazuje na nebalansirane klase.
+
+Ključna briga kod neravnoteženih klasa je da modeli za mašinsko učenje mogu biti pristrani prema većinskoj klasi i imati poteškoća u identifikaciji manjinske klase. 
+
+*RESAMPLING*
+
+Prvo ćemo korišćenjem decision tree algoritma da vidimo koliko nam loše ovo utiče na model.
+
+```{r}
+library(ROSE)
+```
+
+```{r}
+proba <- rpart(hospital_death ~ ., data = train)
+```
+
+```{r}
+predikcija_proba <- predict(proba, newdata = test)
+accuracy.meas(test$hospital_death,predikcija_proba[])
+```
+
+Treshold vrednost je 0.5. Preciznos je 0.616, što znači da oko 61.6% pozitivnih predikcija vašeg modela su tačne, nije toliko dobro, odaziv je 0.224, što znači da je identifikovao samo 22.4% svih pozitivnih instanci, imamo dosta lažno negativnih vrednosti. Takođe F1-score koji je 0.164, što sugeriše da postoji prostor za poboljšanje ravnoteže između preciznosti i odziva.
+
+Sada ćemo proveriti tačnost korišćenjem ROC krive. Ovo će nam dati jasnu sliku, koliko ovaj model vredi.
+
+```{r}
+roc.curve(test$hospital_death, predikcija_proba[], plotit = F)
+```
+
+AUC vrednost od 0.810 ukazuje na to da naš model ima dobru sposobnost razdvajanja klasa i bolje performanse od nasumičnog modela. To je pozitivan znak i sugeriše da model ima potencijal za donošenje korisnih predikcija. Dakle model nije loš, ali definitivno pre primene mašinskog učenja je potrebno da se podaci balansiraju.
+
+```{r}
+xtabs(~hospital_death, data = train)
+```
+
+*Oversampling*
+
+```{r}
+data_balanced_over <- ovun.sample(hospital_death ~ ., data = train, method = "over",N = 142486)$data
+```
+
+```{r}
+table(data_balanced_over$hospital_death)
+```
+
+*Under sampling*
+
+```{r}
+data_balanced_under <- ovun.sample(hospital_death ~ ., data = train, method = "under", N = 13426, seed = 1)$data
+```
+
+```{r}
+table(data_balanced_under$hospital_death)
+```
+
+Sada su podaci balansirani ali smo izgubili ključnu informaciju iz uzorka. Sada ćemo uraditi kombinaciju oversampling-a i undersampling-a.
+
+```{r}
+dim(train)
+```
+
+```{r}
+data_balanced_both <- ovun.sample(hospital_death ~ ., data = train, method = "both", p=0.5, N=77956, seed = 1)$data
+```
+
+```{r}
+table(data_balanced_both$hospital_death)
+```
+
+```{r}
+data.rose <- ROSE(hospital_death ~ ., data = train, seed = 1)$data
+table(data.rose$hospital_death)
+```
+
+Sada treba da proverimo šta smo uradili.
+
+```{r}
+tree.rose <- rpart(hospital_death ~ ., data = data.rose)
+tree.over <- rpart(hospital_death ~ ., data = data_balanced_over)
+tree.under <- rpart(hospital_death ~ ., data = data_balanced_under)
+tree.both <- rpart(hospital_death ~ ., data = data_balanced_both)
+```
+
+```{r}
+predict_rose <- predict(tree.rose, newdata = test)
+predict_over <- predict(tree.over, newdata = test)
+predict_under <- predict(tree.under, newdata = test)
+predict_both <- predict(tree.both, newdata = test)
+```
+
+Pomoću ROC krive ćemo predstaviti naš rezultat.
+
+```{r}
+roc_rose <- roc(test$hospital_death, predict_rose)
+roc_over <- roc(test$hospital_death, predict_over)
+roc_under <- roc(test$hospital_death, predict_under)
+roc_both <- roc(test$hospital_death, predict_both)
+```
+
+
+```{r}
+plot(roc_rose, col = "blue", main = "ROC Curve Comparison")
+lines(roc_over, col = "red")
+lines(roc_under, col = "green")
+lines(roc_both, col = "purple")
+legend("bottomright", legend = c("ROSE", "Oversampling", "Undersampling", "Both"),
+       col = c("blue", "red", "green", "purple"), lty = 1)
+```
+
+Ne vidimo Oversampling liniju zato što joj je vrednost skoro ista kao za Undersampling.
+
+1. ROSE (AUC): 0.761
+2. Oversampling (AUC): 0.844
+3. Undersampling (AUC): 0.843
+4. Both (AUC): 0.839
+
+Najbolji rezultat dobijamo *oversampling* metodom.
+
+```{r}
+resampling_model <- ROSE.eval(hospital_death ~ ., data = train, learner = rpart, method.assess = "holdout", extr.pred = function(obj)obj[], seed = 1)
+resampling_model
+```
+
+```{r}
+X_train <- train[, -ncol(train)]
+y_train <- train[, ncol(train)]
+oversampled_data <- ROSE(hospital_death ~ ., data = train, seed = 1)$data
+X_oversampled <- oversampled_data[, -ncol(oversampled_data)]
+y_oversampled <- oversampled_data[, ncol(oversampled_data)]
+```
+
+*F-REGRESSION TEST*
+
+Sada ćemo da probamo da pronađemo fetures koji najviše utiču na naš model.
+
+```{r}
+X_train <- X_oversampled
+y_train <- y_oversampled
+```
+
+```{r}
+model <- lm(y_train ~ ., data = X_train)
+f_regression <- summary(model)$fstatistic
+p_values <- pf(f_regression[1], f_regression[2], f_regression[3], lower.tail = FALSE)
+significant_features <- names(df)[-1][p_values < 0.05]
+significant_features
+```
+
+*LOGISTIČKA REGRESIJA*
+
+Logistička regresija se koristi za modelovanje verovatnoće da se dogodi određeni događaj koji ima binarni izlaz (kod nas *hospital_death* ima izlaz 0 ili 1). Logistička regresija koristi logističku funkciju (sigmoidnu funkciju) kako bi transformisala linearnu kombinaciju prediktivnih feature-a u verovatnoću.
+Binomijalna raspodela se koristi za modeliranje slučajeva gde se događaji mogu podeliti u dve disktinte kategorije (obično uspeh i neuspeh) i interesuje nas koliko često se uspeh događa u nizu nezavisnih pokušaja, kod nas se odnosi na to da li je pacijent preziveo ili nije.
+
+```{r}
+formula_str <- paste("y_train ~", paste(significant_features, collapse = " + "))
+#cat("Formula:", formula_str, "\n")
+glm1 <- glm( y_train ~ bmi + elective_surgery + ethnicity + gender + height + icu_type + weight + apache_2_diagnosis + apache_3j_diagnosis + apache_post_operative + arf_apache + gcs_eyes_apache + gcs_motor_apache + gcs_unable_apache + gcs_verbal_apache + heart_rate_apache + intubated_apache + map_apache + resprate_apache + temp_apache + ventilated_apache + d1_diasbp_max + d1_diasbp_min + d1_heartrate_max + d1_heartrate_min + d1_mbp_max + d1_mbp_min + d1_resprate_max + d1_resprate_min + d1_spo2_max + d1_spo2_min + d1_sysbp_max + d1_sysbp_min + d1_temp_max + d1_temp_min + h1_diasbp_max + h1_diasbp_min + h1_heartrate_max + h1_heartrate_min + h1_mbp_max + h1_mbp_min + h1_resprate_max + h1_resprate_min + h1_spo2_max + h1_spo2_min + h1_sysbp_max + h1_sysbp_min + d1_glucose_max + d1_glucose_min + d1_potassium_max + d1_potassium_min + apache_4a_hospital_death_prob + apache_4a_icu_death_prob + aids + cirrhosis + diabetes_mellitus + hepatic_failure + immunosuppression + leukemia + lymphoma + solid_tumor_with_metastasis + apache_3j_bodysystem + apache_2_bodysystem + BMI_category , data.frame(X_train, y_train), family = "binomial")
+summary(glm1)
+```
+
+Početni model uključuje sve prediktore. Možemo da vidimo da imamo obeležja koja ne utiču na model (slabo utiču). AIC prvog modela je 76968. Cilj nam je da AIC bude što je moguće niža vrednost.
+
+Obratimo pažnju na sledeće:
+*elective_surgery*, *ethnicity*, *gender*, *height*, *apache_3j_diagnosis*, *apache_post_operative*, *arf_apache*, *gcs_eyes_apache*, *gcs_motor_apache*, *temp_apache*, *ventilated_apache*, *d1_diasbp_min*, *d1_heartrate_max*, *d1_mbp_min*, *d1_resprate_max*, *d1_resprate_min*, *d1_spo2_max*, *d1_spo2_min*, *d1_sysbp_min*, *d1_temp_min*, *h1_diasbp_min*, *h1_heartrate_min*, *h1_mbp_min*, *h1_resprate_max*, *h1_resprate_min*, *h1_spo2_max*, *h1_spo2_min*, *h1_sysbp_max*, *h1_sysbp_min*, *d1_glucose_max*, *d1_glucose_min*, "*d1_potassium_max*", *1_potassium_min*, *apache_4a_hospital_death_prob*, *apache_4a_icu_death_prob*, *cirrhosis*, *diabetes_mellitus*, *hepatic_failure*, *immunosuppression*, *leukemia*, *lymphoma*, *solid_tumor_with_metastasis*, *apache_3j_bodysystem*, *apache_2_bodysystem*, *BMI_category* imaju p-vrednosti manje od 0.05, što ukazuje na njihovu značajnost.
+
+```{r}
+glm2 <- glm(formula = y_train ~ elective_surgery + ethnicity + gender + height + apache_3j_diagnosis + apache_post_operative + arf_apache + gcs_eyes_apache + gcs_motor_apache + temp_apache + ventilated_apache + d1_diasbp_min + d1_heartrate_max + d1_mbp_min + d1_resprate_max + d1_resprate_min + d1_spo2_max + d1_spo2_min + d1_sysbp_min + d1_temp_min + h1_diasbp_min + h1_heartrate_min + h1_mbp_min + h1_resprate_max + h1_resprate_min + h1_spo2_max + h1_spo2_min + h1_sysbp_max + h1_sysbp_min + d1_glucose_max + d1_glucose_min + d1_potassium_max + d1_potassium_min + apache_4a_hospital_death_prob + apache_4a_icu_death_prob + cirrhosis + diabetes_mellitus + hepatic_failure + immunosuppression + leukemia + lymphoma + solid_tumor_with_metastasis + apache_3j_bodysystem + apache_2_bodysystem + BMI_category, data.frame(X_train, y_train), family = "binomial")
+summary(glm2)
+```
+
+Sada izbacivanjem feture-a koji imaju lošu p-vrednost dobijamo AIC (= 77477) koji je lošiji nego prilikom korišćenja svih feture-a u prvom modelu (AIC = 76968).
+Zadržaćemo se na našem prvom modelu.
+
+```{r}
+glm3 <- glm(formula = y_train ~ ., data.frame(X_train, y_train), family = "binomial")
+summary(glm3)
+```
+
+Ostalo nam je još da isprobamo model koji uključuje sve feture i u ovom modelu dobijamo AIC (= 75940) koji je najbolji do sada.
+Zadržaćemo se na ovom modelu.
+
+```{r}
+#AUC = 0.873
+prediction_glm3 <- predict(glm3, test, type="response")
+roc.curve(test$hospital_death, prediction_glm3[], plotit = T)
+```
+
+Linear regression(AUC) = 0.873
+Naš prvi model je veoma dobro prediktovao podatke, ali hajde da to potvrdimo metrikama. Za optimalni threshold bismo mogli da uzmemo vrednost 0.7, ali ćemo za svaki slučaj to proveriti.
+
+              Predicted Negative    Predicted Positive
+Actual Negative       True Negative     False Positive
+Actual Positive       False Negative    True Positive
+
+Accuracy = TP + TN / TP + TN + FP + FN
+Precision = TP / TP + FP
+Recall = TP / TP + FN
+F1-score = 2 * (Precision * Recall) / (Precision + Recall)
+
+Za početak ćemo odrediti *treshold* i *kappa-score*.
+Cohen's Kappa (kappa-score), je statistička mera koja se koristi za procenu stepena usklađenosti (concordance) između stvarnih i predviđenih klasa u binarnoj ili višeklasnoj klasifikaciji. Ova mera uzima u obzir slučajnu usklađenost i pruža bolju procenu performansi modela od same tačnosti kada se suočavate sa neuravnoteženim klasama ili slučajnim predviđanjima.
+
+```{r}
+predicted_probabilities <- prediction_glm3
+actual_classes <- test$hospital_death
+
+threshold_grid <- seq(0.1, 0.9, by = 0.1)
+best_kappa <- -Inf
+optimal_threshold <- NULL
+
+for (threshold in threshold_grid) {
+  predicted_classes <- ifelse(predicted_probabilities >= threshold, 1, 0)
+  kappa <- kappa2(data.frame(predicted = predicted_classes, actual = actual_classes))$value
+  if (kappa > best_kappa) {
+    best_kappa <- kappa
+    optimal_threshold <- threshold
+  }
+}
+
+print(paste("Optimalni threshold:", optimal_threshold))
+print(paste("Najbolji Kappa-Score:", best_kappa))
+```
+
+Kappa-Score nam pokazuje da naš model OK usklađuje predviđene i stvarne klase. Threshold je 0.7, ista vrednost koju smo mi slobodnim odabirom na osnovu ROC krive odredili.
+
+```{r}
+table(ifelse(prediction_glm3 > 0.7, 1, 0), test$hospital_death)
+conf_matrix_glm = confusionMatrix(table(ifelse(prediction_glm3 > 0.7, 1, 0), test$hospital_death))
+```
+
+*Accuracy*
+
+```{r}
+#Accuracy = TP + TN / TP + TN + FP + FN => 0.90
+accuracy <- conf_matrix_glm$overall["Accuracy"]
+accuracy_str <- sprintf("Accuracy: %.2f", accuracy)
+print(accuracy_str)
+```
+
+*Precision*
+
+```{r}
+#Precision = TP / TP + FP => 0.96
+precision <- conf_matrix_glm$byClass["Pos Pred Value"]
+precision_str <- sprintf("Precision: %.2f", precision)
+print(precision_str)
+```
+*Recall*
+
+```{r}
+#Recall = TP / TP + FN => 0.93
+print(paste(round(conf_matrix_glm$byClass["Sensitivity"], 2)))
+```
+*F1-score*
+
+```{r}
+#F1 - score = 2 * (Precision * Recall) / (Precision + Recall) => 0.94
+print(paste("F1-Score:", round(conf_matrix_glm$byClass["F1"], 2)))
+```
+
+*DECISION TREE*
+
+Stablo odlučivanja je moćan algoritam mašinskog učenja koji se koristi za klasifikaciju i regresiju. Ovaj algoritam ima široku primenu u analizi podataka i donošenju odluka. 
+*Medicinska dijagnostika*: Stablo odlučivanja se koristi u medicinskim istraživanjima i dijagnostici za donošenje odluka o dijagnozi na osnovu medicinskih simptoma i karakteristika.
+
+type = 5: Generiše prikaz stabla sa podeocima i horizontalnim rasporedom. Ovo je često korisno za veća stabla kako bi se izbegao problem pretrpane vizualizacije.
+
+1) Prvi model ćemo kreirati sa feature-ima koje smo dobili kao najznačajnije ligostičkom regresijom.
+
+```{r}
+stablo1 = rpart(y_train ~ elective_surgery + weight + apache_3j_diagnosis + apache_post_operative + arf_apache + gcs_eyes_apache + gcs_unable_apache + heart_rate_apache + resprate_apache + ventilated_apache + d1_heartrate_max + d1_resprate_min + d1_spo2_min + h1_heartrate_max + h1_resprate_min + d1_glucose_min + d1_potassium_max + apache_4a_hospital_death_prob + apache_4a_icu_death_prob + diabetes_mellitus + hepatic_failure + immunosuppression + solid_tumor_with_metastasis + apache_3j_bodysystem + apache_2_bodysystem, data.frame(X_train, y_train), method = "class")
+#prp(stablo1, type = 5)
+```
+
+```{r}
+prediction_decision_tree = predict(stablo1, test, type="class")
+table(prediction_decision_tree, test$hospital_death)
+confusion_matrix_dt1 = confusionMatrix(table(prediction_decision_tree, test$hospital_death))
+```
+
+*Accuracy*
+
+```{r}
+#Accuracy = TP + TN / TP + TN + FP + FN => 0.86
+accuracy <- confusion_matrix_dt1$overall["Accuracy"]
+accuracy_str <- sprintf("Accuracy: %.2f", accuracy)
+print(accuracy_str)
+```
+
+*Precision*
+
+```{r}
+#Precision = TP / TP + FP => 0.96
+precision <- confusion_matrix_dt1$byClass["Pos Pred Value"]
+precision_str <- sprintf("Precision: %.2f", precision)
+print(precision_str)
+```
+
+*Recall*
+
+```{r}
+#Recall = TP / TP + FN => 0.89
+print(paste(round(confusion_matrix_dt1$byClass["Sensitivity"], 2)))
+```
+
+*F1-score*
+
+```{r}
+#F1 - score = 2 * (Precision * Recall) / (Precision + Recall) => 0.92
+print(paste("F1-Score:", round(confusion_matrix_dt1$byClass["F1"], 2)))
+```
+
+```{r}
+#AUC = 0.749
+predict_dt1 <- predict(stablo1, test, type="class")
+roc.curve(test$hospital_death, predict_dt1[], plotit = T)
+```
+
+2) Drugi model ćemo kreirati sa feature-ima koje smo dobili kao najrelevantnije (significant_fetures):
+
+```{r}
+stablo2 <- rpart(y_train ~ bmi + elective_surgery + ethnicity + gender + height + icu_type + weight + apache_2_diagnosis + apache_3j_diagnosis + apache_post_operative + arf_apache + gcs_eyes_apache + gcs_motor_apache + gcs_unable_apache + gcs_verbal_apache + heart_rate_apache + intubated_apache + map_apache + resprate_apache + temp_apache + ventilated_apache + d1_diasbp_max + d1_diasbp_min + d1_heartrate_max + d1_heartrate_min + d1_mbp_max + d1_mbp_min + d1_resprate_max + d1_resprate_min + d1_spo2_max + d1_spo2_min + d1_sysbp_max + d1_sysbp_min + d1_temp_max + d1_temp_min + h1_diasbp_max + h1_diasbp_min + h1_heartrate_max + h1_heartrate_min + h1_mbp_max + h1_mbp_min + h1_resprate_max + h1_resprate_min + h1_spo2_max + h1_spo2_min + h1_sysbp_max + h1_sysbp_min + d1_glucose_max + d1_glucose_min + d1_potassium_max + d1_potassium_min + apache_4a_hospital_death_prob + apache_4a_icu_death_prob + aids + cirrhosis + diabetes_mellitus + hepatic_failure + immunosuppression + leukemia + lymphoma + solid_tumor_with_metastasis + apache_3j_bodysystem + apache_2_bodysystem + BMI_category, data.frame(X_train, y_train), method = "class")
+#prp(stablo2, type = 5)
+```
+
+
+```{r}
+prediction_decision_tree2 = predict(stablo2, test, type="class")
+table(prediction_decision_tree2, test$hospital_death)
+confusion_matrix_dt2 = confusionMatrix(table(prediction_decision_tree2, test$hospital_death))
+```
+
+*Accuracy*
+
+```{r}
+#Accuracy = TP + TN / TP + TN + FP + FN => 0.86
+accuracy <- confusion_matrix_dt2$overall["Accuracy"]
+accuracy_str <- sprintf("Accuracy: %.2f", accuracy)
+print(accuracy_str)
+```
+
+*Precision*
+
+```{r}
+#Precision = TP / TP + FP => 0.96
+precision <- confusion_matrix_dt2$byClass["Pos Pred Value"]
+precision_str <- sprintf("Precision: %.2f", precision)
+print(precision_str)
+```
+*Recall*
+
+```{r}
+#Recall = TP / TP + FN => 0.89
+print(paste(round(confusion_matrix_dt2$byClass["Sensitivity"], 2)))
+```
+*F1-score*
+
+```{r}
+#F1 - score = 2 * (Precision * Recall) / (Precision + Recall) => 0.92
+print(paste("F1-Score:", round(confusion_matrix_dt2$byClass["F1"], 2)))
+```
+
+```{r}
+#AUC =  0.749
+predict_dt2 <- predict(stablo2, test, type="class")
+roc.curve(test$hospital_death, predict_dt2[], plotit = T)
+```
+
+Primećujemo da nema značajne razlike između ova dva modela.
+
+*RANDOM FOREST*
+
+Random Forest je moćan algoritam ansambla stabala odlučivanja. S obzirom na različite karakteristike pacijenata, kao i moguće interakcije među obeležjima, Random Forest može pružiti visoku tačnost i bolje upravljanje kompleksnošću.
+
+1) Prvi model ćemo kreirati sa feature-ima koje smo dobili kao najznačajnije ligostičkom regresijom.
+
+```{r}
+y_train <- factor(y_train)
+rf_model <- randomForest(y_train ~ ., data = data.frame(X_train, y_train), ntree = 100)
+varImpPlot(rf_model)
+predictions_rf1 <- predict(rf_model, newdata = test)
+```
+
+```{r}
+table(predictions_rf1, test$hospital_death)
+```
+
+```{r}
+confusion_matrix_rf1 = confusionMatrix(table(predictions_rf1, test$hospital_death))
+```
+
+*Accuracy*
+
+```{r}
+#Accuracy = TP + TN / TP + TN + FP + FN => 0.92
+accuracy <- confusion_matrix_rf1$overall["Accuracy"]
+accuracy_str <- sprintf("Accuracy: %.2f", accuracy)
+print(accuracy_str)
+```
+
+*Precision*
+
+```{r}
+#Precision = TP / TP + FP => 0.94
+precision <- confusion_matrix_rf1$byClass["Pos Pred Value"]
+precision_str <- sprintf("Precision: %.2f", precision)
+print(precision_str)
+```
+
+*Recall*
+
+```{r}
+#Recall = TP / TP + FN => 0.97
+print(paste(round(confusion_matrix_rf1$byClass["Sensitivity"], 2)))
+```
+*F1-score*
+
+```{r}
+#F1 - score = 2 * (Precision * Recall) / (Precision + Recall) => 0.96
+print(paste("F1-Score:", round(confusion_matrix_rf1$byClass["F1"], 2)))
+```
+
+```{r}
+#AUC = 0.688
+predict_rf1 <- predict(rf_model, newdata = test)
+roc.curve(test$hospital_death, predict_rf1[], plotit = T)
+```
+
+2. Drugi model ćemo kreirati sa feature-ima koje smo dobili kao najrelevantnije (significant_fetures):
+
+```{r}
+rf_model2 <- randomForest(y_train ~ bmi + elective_surgery + ethnicity + gender + height + icu_type + weight + apache_2_diagnosis + apache_3j_diagnosis + apache_post_operative + arf_apache + gcs_eyes_apache + gcs_motor_apache + gcs_unable_apache + gcs_verbal_apache + heart_rate_apache + intubated_apache + map_apache + resprate_apache + temp_apache + ventilated_apache + d1_diasbp_max + d1_diasbp_min + d1_heartrate_max + d1_heartrate_min + d1_mbp_max + d1_mbp_min + d1_resprate_max + d1_resprate_min + d1_spo2_max + d1_spo2_min + d1_sysbp_max + d1_sysbp_min + d1_temp_max + d1_temp_min + h1_diasbp_max + h1_diasbp_min + h1_heartrate_max + h1_heartrate_min + h1_mbp_max + h1_mbp_min + h1_resprate_max + h1_resprate_min + h1_spo2_max + h1_spo2_min + h1_sysbp_max + h1_sysbp_min + d1_glucose_max + d1_glucose_min + d1_potassium_max + d1_potassium_min + apache_4a_hospital_death_prob + apache_4a_icu_death_prob + aids + cirrhosis + diabetes_mellitus + hepatic_failure + immunosuppression + leukemia + lymphoma + solid_tumor_with_metastasis + apache_3j_bodysystem + apache_2_bodysystem + BMI_category, data = data.frame(X_train, y_train), ntree = 100)
+
+predictions_rf2 <- predict(rf_model2, newdata = test)
+```
+
+
+```{r}
+table(predictions_rf2, test$hospital_death)
+```
+
+```{r}
+confusion_matrix_rf2 = confusionMatrix(table(predictions_rf2, test$hospital_death))
+```
+
+*Accuracy*
+
+```{r}
+#Accuracy = TP + TN / TP + TN + FP + FN => 0.92
+accuracy <- confusion_matrix_rf2$overall["Accuracy"]
+accuracy_str <- sprintf("Accuracy: %.2f", accuracy)
+print(accuracy_str)
+```
+
+*Precision*
+
+```{r}
+#Precision = TP / TP + FP => 0.94
+precision <- confusion_matrix_rf2$byClass["Pos Pred Value"]
+precision_str <- sprintf("Precision: %.2f", precision)
+print(precision_str)
+```
+
+*Recall*
+
+```{r}
+#Recall = TP / TP + FN => 0.97
+print(paste(round(confusion_matrix_rf2$byClass["Sensitivity"], 2)))
+```
+*F1-score*
+
+```{r}
+#F1 - score = 2 * (Precision * Recall) / (Precision + Recall) => 0.96
+print(paste("F1-Score:", round(confusion_matrix_rf2$byClass["F1"], 2)))
+```
+
+```{r}
+#AUC = 0.686
+predict_rf2 <- predict(rf_model2, newdata = test)
+roc.curve(test$hospital_death, predict_rf2[], plotit = T)
+```
+
+
+Hajde za kraj da vidimo koliki ucinak imaju prediktori, tj. koliki im je nivo znacajnosti na osnovu RANDOM FOREST algoritma.
+
+```{r}
+feature_weight = data.frame( Feature = row.names(importance(rf_model)), MeanDecreaseGini = importance(rf_model))
+```
+
+Sada ćemo to predstaviti grafički.
+
+```{r}
+gg_feature_weight <- ggplot(feature_weight, aes(x = reorder(Feature, MeanDecreaseGini), y = MeanDecreaseGini)) +
+ geom_bar(stat = "identity", fill = "green") +
+ theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+ labs(
+ title = "Nivo značajnosti prediktora",
+ x = "Prediktor",
+ y = "Nivo značajnosti"
+ )
+
+gg_feature_weight
+```
+
+Primećujemo da *apache_a4_hospital_death_prob* i *apache_a4_icu_death_prob* imaju najveću zanačajnost korišćenjem algoritma random forest. Pored njih su tu i *d1_spo2_min*, *gsc_motor_apache*.
+
+Primećujemo da ovaj model nema značajnija poboljšanja.
+
+Sada ćemo da probamo drugi pristup za oversampling.
+1. oversampled_data_1 <- ovun.sample(hospital_death ~ ., data = data, method = "over", seed = 1)$dataa
+
+Kako ne bismo ponovo pokretali sve ponovo, ispaćemo rezultat koji smo dobili ovim pristupom.
+
